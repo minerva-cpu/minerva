@@ -1,6 +1,6 @@
 # Minerva
 
-## A 32-bit RISC-V CPU core for FPGAs
+## A 32-bit RISC-V soft processor
 
 Minerva is a CPU core that currently implements the [RISC-V][1] RV32I instruction set. Its microarchitecture is described in plain Python code using the [nMigen][2] toolbox.
 
@@ -31,11 +31,11 @@ Minerva is pipelined on 6 stages:
 
 ![Pipeline Diagram Image](https://docs.google.com/drawings/d/e/2PACX-1vTMkQc8ZJoiJ2AOeFGMkK0QTNx1hSG5wDrG5seLdJ3i61E4ag7wH7VFey44qhvuXotvOKxOw-mFS-VE/pub?w=850&h=761)
 
-The two L1 caches are write-through, meaning that writes are done synchronously to both the cache and the underlying memory hierarchy.
+The two L1 caches are write-through, meaning that writes are done to both the cache and the underlying memory hierarchy.
 
-Miss penalties are reduced by restarting execution as soon as the missing word is available, without waiting for the complete line refill ("Early Restart"). Furthermore, cache refills always request the missing word first ("Critical Word First"). By combining these two policies, Minerva is able to resume its execution after a cache miss in only *2 clock cycles* in the best case, regardless of line size.
+Miss penalties are reduced by restarting execution as soon as the missing word is available, without waiting for the complete line refill. Furthermore, cache refills always request the missing word first. By combining these two policies, Minerva is able to resume its execution after a cache miss in only *two clock cycles* in the best case, regardless of line size.
 
-The L1 data cache is coupled to a write buffer. Store transactions are in this case done synchronously to both the cache and the write buffer instead of the data bus. This enables stores to proceed in 1 clock cycle if the buffer isn't full, without having to wait for the bus transaction to complete. Store transactions are then completed in the background as the write buffer gets emptied to the data bus.
+The L1 data cache is coupled to a write buffer. Store transactions are in this case done to the write buffer instead of the data bus. This enables stores to proceed in one clock cycle if the buffer isn't full, without having to wait for the bus transaction to complete. Store transactions are then completed in the background as the write buffer gets emptied to the data bus.
 
 Minerva is able to operate at 100MHz on a Xilinx XC7A35-2 FPGA, with both caches enabled.
 
