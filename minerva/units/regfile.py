@@ -14,14 +14,14 @@ class GPRFile:
         self.rp2 = Record(self.rp1.layout)
         self.wp  = Record([("addr", 5), ("en", 1), ("data", 32)])
 
-    def get_fragment(self, platform):
+    def elaborate(self, platform):
         m = Module()
         regs = Array(Signal(32) for _ in range(32))
         for rp in (self.rp1, self.rp2):
             m.d.comb += rp.data.eq(regs[rp.addr])
         with m.If(self.wp.en):
             m.d.sync += regs[self.wp.addr].eq(self.wp.data)
-        return m.lower(platform)
+        return m
 
 
 _csr_map = {
@@ -61,7 +61,7 @@ class CSRFile:
         self._ports.append((addr, port))
         return port
 
-    def get_fragment(self, platform):
+    def elaborate(self, platform):
         m = Module()
         regs = {addr: Signal(32) for addr in _csr_map}
 
@@ -81,4 +81,4 @@ class CSRFile:
             with m.If(rec.we):
                 m.d.sync += regs[addr].eq(rec.dat_w)
 
-        return m.lower(platform)
+        return m

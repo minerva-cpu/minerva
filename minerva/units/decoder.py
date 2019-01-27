@@ -55,7 +55,7 @@ class InstructionDecoder(Module):
         self.funct3 = Signal(3)
         self.illegal = Signal()
 
-    def get_fragment(self, platform):
+    def elaborate(self, platform):
         m = Module()
 
         opcode = Signal(5)
@@ -235,4 +235,4 @@ class InstructionDecoder(Module):
             )))
         ]
 
-        return m.lower(platform)
+        return m

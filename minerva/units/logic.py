@@ -11,7 +11,7 @@ class LogicUnit:
 
         self.result = Signal(32)
 
-    def get_fragment(self, platform):
+    def elaborate(self, platform):
         m = Module()
 
         with m.Switch(self.op):
@@ -22,4 +22,4 @@ class LogicUnit:
             with m.Case(Funct3.AND):
                 m.d.comb += self.result.eq(self.src1 & self.src2)
 
-        return m.lower(platform)
+        return m

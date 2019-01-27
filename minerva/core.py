@@ -143,7 +143,7 @@ class Minerva:
         self.dcache_base = dcache_base
         self.dcache_limit = dcache_limit
 
-    def get_fragment(self, platform):
+    def elaborate(self, platform):
         cpu = Module()
 
         # pipeline stages
@@ -665,4 +665,4 @@ class Minerva:
             mepc.dat_w.eq(w.sink.mepc),
         ]
 
-        return cpu.lower(platform)
+        return cpu

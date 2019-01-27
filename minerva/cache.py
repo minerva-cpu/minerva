@@ -82,7 +82,7 @@ class L1Cache(Module):
         addressbits = log2_int(self.limit - self.base)
         return addressbits - (wordbits + self.offsetbits + self.linebits)
 
-    def get_fragment(self, platform):
+    def elaborate(self, platform):
         m = Module()
 
         def split_adr(adr):
@@ -288,5 +288,4 @@ class L1Cache(Module):
             with m.Else():
                 m.d.comb += way.data.eq(latch_data_rp_data.part(s2_offset*32, 32))
 
-        return m.lower(platform)
-
+        return m

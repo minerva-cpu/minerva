@@ -32,7 +32,7 @@ class _LoadStoreUnit:
         self.m_load_data = Signal(32)
         self.w_load_result = Signal((32, True))
 
-    def get_fragment(self, platform):
+    def elaborate(self, platform):
         m = Module()
 
         with m.Switch(self.x_mask[:2]):
@@ -95,13 +95,13 @@ class _LoadStoreUnit:
             with m.Case(Funct3.W):
                     m.d.comb += self.w_load_result.eq(self.w_load_data)
 
-        return m.lower(platform)
+        return m
 
 
 class SimpleLoadStoreUnit(_LoadStoreUnit):
-    def get_fragment(self, platform):
+    def elaborate(self, platform):
         m = Module()
-        m.submodules += super().get_fragment(platform)
+        m.submodules += super().elaborate(platform)
 
         with m.If(self.dbus.cyc):
             with m.If(self.dbus.ack | self.dbus.err):
@@ -129,7 +129,7 @@ class SimpleLoadStoreUnit(_LoadStoreUnit):
                 self.dbus.sel.eq(self.x_dbus_sel)
             ]
 
-        return m.lower(platform)
+        return m
 
 
 class CachedLoadStoreUnit(_LoadStoreUnit):
@@ -150,9 +150,9 @@ class CachedLoadStoreUnit(_LoadStoreUnit):
         self.wrbuf_din = Record([("adr", 30), ("sel", 4), ("dat_w", 32)])
         self.wrbuf = SyncFIFO(len(self.wrbuf_din), self.dcache.nb_words)
 
-    def get_fragment(self, platform):
+    def elaborate(self, platform):
         m = Module()
-        m.submodules += super().get_fragment(platform)
+        m.submodules += super().elaborate(platform)
 
         dcache = m.submodules.dcache = self.dcache
         m.d.comb += [
@@ -246,4 +246,4 @@ class CachedLoadStoreUnit(_LoadStoreUnit):
                 self.dbus.stb.eq(1)
             ]
 
-        return m.lower(platform)
+        return m

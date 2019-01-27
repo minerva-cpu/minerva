@@ -75,7 +75,7 @@ class Stage:
     def stall_on(self, cond):
         self._stall_sources.append(cond)
 
-    def get_fragment(self, platform):
+    def elaborate(self, platform):
         m = Module()
 
         if hasattr(self, "sink"):
@@ -97,4 +97,4 @@ class Stage:
 
         m.d.comb += self.stall.eq(reduce(or_, self._stall_sources, 0))
 
-        return m.lower(platform)
+        return m

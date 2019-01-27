@@ -11,7 +11,7 @@ class Shifter:
 
         self.m_result = Signal(32)
 
-    def get_fragment(self, platform):
+    def elaborate(self, platform):
         m = Module()
 
         x_operand = Signal(32)
@@ -33,4 +33,4 @@ class Shifter:
 
         m.d.comb += self.m_result.eq(Mux(m_direction, m_result, m_result[::-1]))
 
-        return m.lower(platform)
+        return m

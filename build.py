@@ -5,7 +5,7 @@ from minerva.core import Minerva
 
 def main():
     cpu = Minerva()
-    frag = cpu.get_fragment(platform=None)
+    frag = cpu.elaborate(platform=None)
     print(verilog.convert(frag, name="minerva_cpu", ports=(
         cpu.external_interrupt,
         cpu.ibus.ack,

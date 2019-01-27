@@ -13,7 +13,7 @@ class _AddSub:
         self.result = Signal(32)
         self.cout = Signal()
 
-    def get_fragment(self, platform):
+    def elaborate(self, platform):
         m = Module()
 
         add_ab = Signal(33)
@@ -25,7 +25,7 @@ class _AddSub:
             self.cout.eq(Mux(self.add, add_ab[32], sub_ab[32]))
         ]
 
-        return m.lower(platform)
+        return m
 
 
 class AdderUnit(Module):
@@ -38,7 +38,7 @@ class AdderUnit(Module):
         self.carry = Signal()
         self.overflow = Signal()
 
-    def get_fragment(self, platform):
+    def elaborate(self, platform):
         m = Module()
 
         overflow_add = Signal()
@@ -58,4 +58,4 @@ class AdderUnit(Module):
             self.carry.eq(addsub.cout)
         ]
 
-        return m.lower(platform)
+        return m

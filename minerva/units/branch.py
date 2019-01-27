@@ -15,7 +15,7 @@ class BranchPredictor(Module):
         self.d_branch_predict_taken = Signal()
         self.d_branch_target = Signal(32)
 
-    def get_fragment(self, platform):
+    def elaborate(self, platform):
         m = Module()
 
         with m.If(self.d_branch):
@@ -32,7 +32,7 @@ class BranchPredictor(Module):
         with m.Else():
             m.d.comb += self.d_branch_target.eq((self.d_pc << 2) + self.d_offset)
 
-        return m.lower(platform)
+        return m
 
 
 class BranchUnit(Module):
@@ -45,7 +45,7 @@ class BranchUnit(Module):
 
         self.condition_met = Signal()
 
-    def get_fragment(self, platform):
+    def elaborate(self, platform):
         m = Module()
 
         with m.Switch(self.condition):
@@ -62,4 +62,4 @@ class BranchUnit(Module):
             with m.Case(Funct3.BGEU):
                 m.d.comb += self.condition_met.eq(~self.cmp_carry)
 
-        return m.lower(platform)
+        return m

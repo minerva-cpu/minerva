@@ -26,7 +26,7 @@ class _InstructionUnit:
         self.f_instruction = Signal(32)
         self.f_bus_error = Signal()
 
-    def get_fragment(self, platform):
+    def elaborate(self, platform):
         m = Module()
 
         with m.If(self.d_branch_predict_taken):
@@ -38,13 +38,13 @@ class _InstructionUnit:
         with m.Else():
             m.d.comb += self.a_pc.eq(self.f_pc + 1)
 
-        return m.lower(platform)
+        return m
 
 
 class SimpleInstructionUnit(_InstructionUnit):
-    def get_fragment(self, platform):
+    def elaborate(self, platform):
         m = Module()
-        m.submodules += super().get_fragment(platform)
+        m.submodules += super().elaborate(platform)
 
         with m.If(self.ibus.cyc):
             with m.If(self.ibus.ack | self.ibus.err):
@@ -64,7 +64,7 @@ class SimpleInstructionUnit(_InstructionUnit):
                 self.f_bus_error.eq(0)
             ]
 
-        return m.lower(platform)
+        return m
 
 
 class CachedInstructionUnit(_InstructionUnit):
@@ -76,9 +76,9 @@ class CachedInstructionUnit(_InstructionUnit):
 
         self.icache = L1Cache(*icache_args)
 
-    def get_fragment(self, platform):
+    def elaborate(self, platform):
         m = Module()
-        m.submodules += super().get_fragment(platform)
+        m.submodules += super().elaborate(platform)
 
         icache = m.submodules.icache = self.icache
         m.d.comb += [
@@ -124,4 +124,4 @@ class CachedInstructionUnit(_InstructionUnit):
                 self.ibus.stb.eq(1)
             ]
 
-        return m.lower(platform)
+        return m
