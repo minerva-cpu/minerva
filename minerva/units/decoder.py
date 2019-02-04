@@ -19,7 +19,7 @@ class Type:
     J = 5
 
 
-class InstructionDecoder(Module):
+class InstructionDecoder:
     def __init__(self):
         self.instruction = Signal(32)
 

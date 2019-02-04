@@ -3,7 +3,7 @@ from nmigen import *
 from ..isa import Funct3
 
 
-class BranchPredictor(Module):
+class BranchPredictor:
     def __init__(self):
         self.d_branch = Signal()
         self.d_jump = Signal()
@@ -35,7 +35,7 @@ class BranchPredictor(Module):
         return m
 
 
-class BranchUnit(Module):
+class BranchUnit:
     def __init__(self):
         self.condition = Signal(3)
         self.cmp_zero = Signal()

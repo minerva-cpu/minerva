@@ -34,7 +34,7 @@ def displacer(signal, shift, output, n=None, reverse=False):
     return output.eq(Cat(*l))
 
 
-class L1Cache(Module):
+class L1Cache:
     def __init__(self, nb_ways, nb_lines, nb_words, base, limit):
         if nb_ways not in {1, 2}:
             raise ValueError

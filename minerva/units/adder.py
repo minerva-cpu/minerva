@@ -28,7 +28,7 @@ class _AddSub:
         return m
 
 
-class AdderUnit(Module):
+class AdderUnit:
     def __init__(self):
         self.op = Signal()
         self.src1 = Signal(32)
