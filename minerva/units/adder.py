@@ -1,7 +1,7 @@
 from nmigen import *
 
 
-__all__ = ["Adder"]
+__all__ = ["AdderUnit"]
 
 
 class _AddSub:

@@ -3,6 +3,9 @@ from nmigen import *
 from ..isa import Funct3
 
 
+__all__ = ["LogicUnit"]
+
+
 class LogicUnit:
     def __init__(self):
         self.op = Signal(3)

@@ -3,6 +3,9 @@ from nmigen import *
 from ..isa import Funct3
 
 
+__all__ = ["BranchPredictor", "BranchUnit"]
+
+
 class BranchPredictor:
     def __init__(self):
         self.d_branch = Signal()

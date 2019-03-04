@@ -1,6 +1,9 @@
 from nmigen import *
 
 
+__all__ = ["Shifter"]
+
+
 class Shifter:
     def __init__(self):
         self.x_direction = Signal()

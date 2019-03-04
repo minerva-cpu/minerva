@@ -1,8 +1,7 @@
 from nmigen import *
 from nmigen.hdl.rec import *
 
-from ..isa import (CSRIndex, flat_layout, misa_layout, mstatus_layout,
-        mtvec_layout, mip_layout, mie_layout, mcause_layout)
+from ..isa import *
 
 
 __all__ = ["GPRFile", "CSRFile"]

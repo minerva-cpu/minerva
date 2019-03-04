@@ -5,16 +5,18 @@ from itertools import tee
 from nmigen import *
 from nmigen.lib.coding import PriorityEncoder
 
-from .isa import CSRIndex, Cause, mcause_layout, flat_layout
-from .stage import Stage
-from .units.adder import AdderUnit
-from .units.branch import BranchUnit, BranchPredictor
-from .units.decoder import InstructionDecoder
-from .units.ifetch import SimpleInstructionUnit, CachedInstructionUnit
-from .units.loadstore import SimpleLoadStoreUnit, CachedLoadStoreUnit
-from .units.logic import LogicUnit
-from .units.regfile import GPRFile, CSRFile
-from .units.shifter import Shifter
+from .isa import *
+from .stage import *
+
+from .units.adder import *
+from .units.branch import *
+from .units.decoder import *
+from .units.ifetch import *
+from .units.loadstore import *
+from .units.logic import *
+from .units.regfile import *
+from .units.shifter import *
+
 from .wishbone import wishbone_layout
 
 

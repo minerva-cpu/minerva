@@ -2,6 +2,9 @@ from nmigen import *
 from nmigen.hdl.rec import *
 
 
+__all__ = ["Cycle", "wishbone_layout"]
+
+
 class Cycle:
     CLASSIC   = 0
     CONSTANT  = 1

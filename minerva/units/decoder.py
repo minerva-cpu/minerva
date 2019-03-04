@@ -7,7 +7,7 @@ from nmigen import *
 from ..isa import Opcode, Funct3, Funct7, Funct12
 
 
-__all__ = ["Decoder"]
+__all__ = ["InstructionDecoder"]
 
 
 class Type:
