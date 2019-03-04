@@ -161,17 +161,7 @@ class Minerva:
         sources, sinks = tee(stages)
         next(sinks)
         for s1, s2 in zip(sources, sinks):
-            # FIXME
-            # cpu.d.comb += s1.source.connect(s2.sink)
-            cpu.d.comb += [
-                s2.sink.valid.eq(s1.source.valid),
-                s1.source.stall.eq(s2.sink.stall),
-                s2.sink.kill.eq(s1.source.kill)
-            ]
-            for name, *rest in s1.source.payload.layout:
-                src = getattr(s1.source.payload, name)
-                snk = getattr(s2.sink.payload, name)
-                cpu.d.comb += snk.eq(src)
+            cpu.d.comb += s1.source.connect(s2.sink)
 
         a.source.pc.reset = self.reset_address//4 - 1
         cpu.d.comb += a.valid.eq(1)
@@ -205,20 +195,7 @@ class Minerva:
         d_branch_target = Signal(32)
 
         cpu.d.comb += [
-            # FIXME
-            # ifu.ibus.connect(self.ibus),
-            self.ibus.adr.eq(ifu.ibus.adr),
-            self.ibus.dat_w.eq(ifu.ibus.dat_w),
-            ifu.ibus.dat_r.eq(self.ibus.dat_r),
-            self.ibus.sel.eq(ifu.ibus.sel),
-            self.ibus.cyc.eq(ifu.ibus.cyc),
-            self.ibus.stb.eq(ifu.ibus.stb),
-            ifu.ibus.ack.eq(self.ibus.ack),
-            self.ibus.we.eq(ifu.ibus.we),
-            self.ibus.cti.eq(ifu.ibus.cti),
-            self.ibus.bte.eq(ifu.ibus.bte),
-            ifu.ibus.err.eq(self.ibus.err),
-
+            ifu.ibus.connect(self.ibus),
             ifu.a_stall.eq(a.stall),
             ifu.f_pc.eq(f.sink.pc[:30]),
             ifu.d_branch_predict_taken.eq(d_branch_predict_taken & d.valid),
@@ -317,20 +294,7 @@ class Minerva:
             m.stall_on(self.dbus.cyc)
 
         cpu.d.comb += [
-            # FIXME
-            # lsu.dbus.connect(self.dbus),
-            self.dbus.adr.eq(lsu.dbus.adr),
-            self.dbus.dat_w.eq(lsu.dbus.dat_w),
-            lsu.dbus.dat_r.eq(self.dbus.dat_r),
-            self.dbus.sel.eq(lsu.dbus.sel),
-            self.dbus.cyc.eq(lsu.dbus.cyc),
-            self.dbus.stb.eq(lsu.dbus.stb),
-            lsu.dbus.ack.eq(self.dbus.ack),
-            self.dbus.we.eq(lsu.dbus.we),
-            self.dbus.cti.eq(lsu.dbus.cti),
-            self.dbus.bte.eq(lsu.dbus.bte),
-            lsu.dbus.err.eq(self.dbus.err),
-
+            lsu.dbus.connect(self.dbus),
             lsu.x_address.eq(adder.result),
             lsu.x_load.eq(x.sink.load & x.valid),
             lsu.x_store.eq(x.sink.store & x.valid),
