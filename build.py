@@ -5,8 +5,7 @@ from minerva.core import Minerva
 
 def main():
     cpu = Minerva()
-    frag = cpu.elaborate(platform=None)
-    print(verilog.convert(frag, name="minerva_cpu", ports=(
+    ports = [
         cpu.external_interrupt,
         cpu.ibus.ack,
         cpu.ibus.adr,
@@ -28,7 +27,17 @@ def main():
         cpu.dbus.sel,
         cpu.dbus.stb,
         cpu.dbus.we
-    )))
+    ]
+    if cpu.with_debug:
+        ports += [
+            cpu.jtag.tck,
+            cpu.jtag.tdi,
+            cpu.jtag.tdo,
+            cpu.jtag.tms
+        ]
+
+    frag = cpu.elaborate(platform=None)
+    print(verilog.convert(frag, name="minerva_cpu", ports=ports))
 
 
 if __name__ == "__main__":

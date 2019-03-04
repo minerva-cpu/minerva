@@ -10,6 +10,7 @@ from .stage import *
 
 from .units.adder import *
 from .units.branch import *
+from .units.debug import *
 from .units.decoder import *
 from .units.ifetch import *
 from .units.loadstore import *
@@ -17,6 +18,7 @@ from .units.logic import *
 from .units.regfile import *
 from .units.shifter import *
 
+from .units.debug.jtag import jtag_layout
 from .wishbone import wishbone_layout
 
 
@@ -124,11 +126,14 @@ class Minerva:
                 icache_base=0, icache_limit=2**31,
                 with_dcache=True,
                 dcache_nb_ways=1, dcache_nb_lines=512, dcache_nb_words=8,
-                dcache_base=0, dcache_limit=2**31):
+                dcache_base=0, dcache_limit=2**31,
+                with_debug=False):
         self.external_interrupt = Signal(32)
         self.timer_interrupt = Signal()
         self.ibus = Record(wishbone_layout)
         self.dbus = Record(wishbone_layout)
+        if with_debug:
+            self.jtag = Record(jtag_layout)
 
         # TODO Figure out a better way to pass parameters.
         self.reset_address = reset_address
@@ -144,6 +149,7 @@ class Minerva:
         self.dcache_nb_words = dcache_nb_words
         self.dcache_base = dcache_base
         self.dcache_limit = dcache_limit
+        self.with_debug = with_debug
 
     def elaborate(self, platform):
         cpu = Module()
@@ -295,7 +301,6 @@ class Minerva:
             m.stall_on(self.dbus.cyc)
 
         cpu.d.comb += [
-            lsu.dbus.connect(self.dbus),
             lsu.x_address.eq(adder.result),
             lsu.x_load.eq(x.sink.load & x.valid),
             lsu.x_store.eq(x.sink.store & x.valid),
@@ -306,6 +311,9 @@ class Minerva:
             lsu.w_load_mask.eq(w.sink.load_mask),
             lsu.w_load_data.eq(w.sink.load_data)
         ]
+
+        if not self.with_debug:
+            cpu.d.comb += lsu.dbus.connect(self.dbus)
 
         # RAW hazard management
 
@@ -338,7 +346,8 @@ class Minerva:
             m_lock.eq(~m.sink.bypass_m & (decoder.rs1_re & m_raw_rs1 | decoder.rs2_re & m_raw_rs2))
         ]
 
-        d.stall_on((x_lock | m_lock) & d.valid)
+        if not self.with_debug:
+            d.stall_on((x_lock | m_lock) & d.valid)
 
         # result selection
 
@@ -633,5 +642,52 @@ class Minerva:
             mepc.we.eq(w.sink.exception & w.valid),
             mepc.dat_w.eq(w.sink.mepc),
         ]
+
+        # Debug port
+
+        if self.with_debug:
+            dcsr = csrf.csr_port(CSRIndex.DCSR)
+            dpc  = csrf.csr_port(CSRIndex.DPC)
+
+            m_breakpoint = Signal()
+            with cpu.If(~x.stall):
+                cpu.d.sync += m_breakpoint.eq(x.sink.ebreak & dcsr.dat_r.ebreakm)
+            with cpu.If(~m.stall & m_breakpoint):
+                cpu.d.sync += m.source.exception.eq(0)
+
+            debug = cpu.submodules.debug = DebugUnit(gprf, csrf)
+            cpu.d.comb += [
+                debug.jtag.connect(self.jtag),
+                debug.x_pc.eq(x.sink.pc),
+                debug.x_valid.eq(x.valid),
+                debug.m_branch_taken.eq(m.sink.branch_taken),
+                debug.m_branch_target.eq(m.sink.branch_target),
+                debug.m_breakpoint.eq(m_breakpoint),
+                debug.m_pc.eq(m.sink.pc),
+                debug.m_valid.eq(m.valid)
+            ]
+
+            x.stall_on(debug.halt)
+            m.stall_on(dcsr.dat_r.step & m.valid)
+            for s in a, f, d, x:
+                s.kill_on(debug.killall)
+
+            # The bypass interlock is disabled (and useless) during a single step.
+            d.stall_on((x_lock | m_lock) & d.valid & ~dcsr.dat_r.step)
+
+            halted = x.stall & ~reduce(or_, (s.valid for s in (m, w)))
+            if self.with_dcache:
+                halted = halted & ~lsu.wrbuf.readable
+            cpu.d.sync += debug.halted.eq(halted)
+
+            with cpu.If(debug.resumereq):
+                with cpu.If(~debug.sbbusy):
+                    cpu.d.comb += debug.resumeack.eq(1)
+                    cpu.d.sync += a.source.pc.eq(dpc.dat_r.value[2:] - 1)
+
+            with cpu.If(debug.halt):
+                cpu.d.comb += debug.dbus.connect(self.dbus)
+            with cpu.Else():
+                cpu.d.comb += lsu.dbus.connect(self.dbus)
 
         return cpu

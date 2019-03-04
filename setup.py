@@ -14,6 +14,7 @@ setup(
     author_email="jf@lambdaconcept.fr",
     license="BSD",
     install_requires=["nmigen"],
+    extras_require=["jtagtap"],
     packages=find_packages(),
     project_urls={
         "Source Code": "https://github.com/lambdaconcept/minerva",

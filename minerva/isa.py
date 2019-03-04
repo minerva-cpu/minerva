@@ -1,7 +1,7 @@
 __all__ = [
     "Opcode", "Funct3", "Funct7", "Funct12", "CSRIndex", "CSRMode", "Cause",
     "flat_layout", "misa_layout", "mstatus_layout", "mtvec_layout", "mip_layout",
-    "mie_layout", "mcause_layout"
+    "mie_layout", "mcause_layout", "dcsr_layout"
 ]
 
 class Opcode:
@@ -61,6 +61,9 @@ class CSRIndex:
     # µarch specific
     IRQ_MASK    = 0x330
     IRQ_PENDING = 0x360
+    # debug mode
+    DCSR        = 0x7b0
+    DPC         = 0x7b1
 
 
 class CSRMode:
@@ -179,4 +182,23 @@ mie_layout = [
 mcause_layout = [
     ("ecode",    31),
     ("interrupt", 1)
+]
+
+
+dcsr_layout = [
+    ("prv",        2), # Privilege level before Debug Mode was entered
+    ("step",       1), # Execute a single instruction and re-enter Debug Mode
+    ("nmip",       1), # A non-maskable interrupt is pending
+    ("mprven",     1), # Use mstatus.mprv in Debug Mode
+    ("zero0",      1),
+    ("cause",      3), # Explains why Debug Mode was entered
+    ("stoptime",   1), # Stop timer increment during Debug Mode
+    ("stopcount",  1), # Stop counter increment during Debug Mode
+    ("stepie",     1), # Enable interrupts during single stepping
+    ("ebreaku",    1), # EBREAKs in U-mode enter Debug Mode
+    ("ebreaks",    1), # EBREAKs in S-mode enter Debug Mode
+    ("zero1",      1),
+    ("ebreakm",    1), # EBREAKs in M-mode enter Debug Mode
+    ("zero2",     12),
+    ("xdebugver",  4)  # External Debug specification version
 ]
