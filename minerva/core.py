@@ -212,13 +212,16 @@ class Minerva:
         d.kill_on(d.source.illegal & d.source.valid)
 
         gprf = cpu.submodules.gprf = GPRFile()
+        gprf_rp1 = gprf.read_port()
+        gprf_rp2 = gprf.read_port()
         cpu.d.comb += [
-            gprf.rp1.addr.eq(decoder.rs1),
-            gprf.rp2.addr.eq(decoder.rs2)
+            gprf_rp1.addr.eq(decoder.rs1),
+            gprf_rp2.addr.eq(decoder.rs2)
         ]
 
         csrf = cpu.submodules.csrf = CSRFile()
-        cpu.d.comb += csrf.rp.addr.eq(decoder.immediate[:12])
+        csrf_rp = csrf.read_port()
+        cpu.d.comb += csrf_rp.addr.eq(decoder.immediate[:12])
 
         # csr set/clear instructions are translated to logic operations
         x_csr_set_clear = x.sink.funct3[1]
@@ -327,9 +330,9 @@ class Minerva:
             m_raw_rs2.eq((m.sink.rd == decoder.rs2) & m.sink.rd_we & m.valid),
             w_raw_rs2.eq((w.sink.rd == decoder.rs2) & w.sink.rd_we & w.valid),
 
-            x_raw_csr.eq((x.sink.csr_adr == csrf.rp.addr) & x.sink.csr_we & x.valid),
-            m_raw_csr.eq((m.sink.csr_adr == csrf.rp.addr) & m.sink.csr_we & m.valid),
-            w_raw_csr.eq((w.sink.csr_adr == csrf.rp.addr) & w.sink.csr_we & w.valid),
+            x_raw_csr.eq((x.sink.csr_adr == csrf_rp.addr) & x.sink.csr_we & x.valid),
+            m_raw_csr.eq((m.sink.csr_adr == csrf_rp.addr) & m.sink.csr_we & m.valid),
+            w_raw_csr.eq((w.sink.csr_adr == csrf_rp.addr) & w.sink.csr_we & w.valid),
 
             x_lock.eq(~x.sink.bypass_x & (decoder.rs1_re & x_raw_rs1 | decoder.rs2_re & x_raw_rs2)),
             m_lock.eq(~m.sink.bypass_m & (decoder.rs1_re & m_raw_rs1 | decoder.rs2_re & m_raw_rs2))
@@ -388,7 +391,7 @@ class Minerva:
         with cpu.Elif(w_raw_rs1):
             cpu.d.comb += d_src1.eq(w_result)
         with cpu.Else():
-            cpu.d.comb += d_src1.eq(gprf.rp1.data)
+            cpu.d.comb += d_src1.eq(gprf_rp1.data)
 
         with cpu.If(decoder.csr):
             with cpu.If(x_raw_csr):
@@ -398,7 +401,7 @@ class Minerva:
             with cpu.Elif(w_raw_csr):
                 cpu.d.comb += d_src2.eq(w.sink.csr_result)
             with cpu.Else():
-                cpu.d.comb += d_src2.eq(csrf.rp.data)
+                cpu.d.comb += d_src2.eq(csrf_rp.data)
         with cpu.Elif(~decoder.rs2_re):
             cpu.d.comb += d_src2.eq(decoder.immediate)
         with cpu.Elif(decoder.rs2 == 0):
@@ -606,13 +609,15 @@ class Minerva:
             ]
 
         # W
+        gprf_wp = gprf.write_port()
+        csrf_wp = csrf.write_port()
         cpu.d.comb += [
-            gprf.wp.en.eq((w.sink.rd != 0) & w.sink.rd_we & w.valid),
-            gprf.wp.addr.eq(w.sink.rd),
-            gprf.wp.data.eq(w_result),
-            csrf.wp.en.eq(w.sink.csr_we & w.valid),
-            csrf.wp.addr.eq(w.sink.csr_adr),
-            csrf.wp.data.eq(w.sink.csr_result),
+            gprf_wp.en.eq((w.sink.rd != 0) & w.sink.rd_we & w.valid),
+            gprf_wp.addr.eq(w.sink.rd),
+            gprf_wp.data.eq(w_result),
+            csrf_wp.en.eq(w.sink.csr_we & w.valid),
+            csrf_wp.addr.eq(w.sink.csr_adr),
+            csrf_wp.data.eq(w.sink.csr_result),
             mstatus.we.eq((w.sink.exception | w.sink.mret) & w.valid)
         ]
         with cpu.If(w.sink.exception):
