@@ -207,9 +207,7 @@ class Minerva:
         ]
 
         decoder = cpu.submodules.decoder = InstructionDecoder()
-        cpu.d.comb += [
-            decoder.instruction.eq(d.sink.instruction)
-        ]
+        cpu.d.comb += decoder.instruction.eq(d.sink.instruction)
 
         d.kill_on(d.source.illegal & d.source.valid)
 
@@ -412,18 +410,18 @@ class Minerva:
         with cpu.Elif(w_raw_rs2):
             cpu.d.comb += d_src2.eq(w_result)
         with cpu.Else():
-            cpu.d.comb += d_src2.eq(gprf.rp2.data)
+            cpu.d.comb += d_src2.eq(gprf_rp2.data)
 
         # csr ports
 
-        mstatus = csrf.get_csr_port(CSRIndex.MSTATUS)
-        mtvec = csrf.get_csr_port(CSRIndex.MTVEC)
-        mcause = csrf.get_csr_port(CSRIndex.MCAUSE)
-        mepc = csrf.get_csr_port(CSRIndex.MEPC)
-        mip = csrf.get_csr_port(CSRIndex.MIP)
-        mie = csrf.get_csr_port(CSRIndex.MIE)
-        irq_pending = csrf.get_csr_port(CSRIndex.IRQ_PENDING)
-        irq_mask = csrf.get_csr_port(CSRIndex.IRQ_MASK)
+        mstatus     = csrf.csr_port(CSRIndex.MSTATUS)
+        mtvec       = csrf.csr_port(CSRIndex.MTVEC)
+        mcause      = csrf.csr_port(CSRIndex.MCAUSE)
+        mepc        = csrf.csr_port(CSRIndex.MEPC)
+        mip         = csrf.csr_port(CSRIndex.MIP)
+        mie         = csrf.csr_port(CSRIndex.MIE)
+        irq_pending = csrf.csr_port(CSRIndex.IRQ_PENDING)
+        irq_mask    = csrf.csr_port(CSRIndex.IRQ_MASK)
 
         # branch prediction
 
@@ -441,7 +439,7 @@ class Minerva:
         cpu.d.comb += [
             d_branch_predict_taken.eq(bp.d_branch_predict_taken),
             d_branch_target.eq(bp.d_branch_target),
-            x_branch_taken.eq(x.sink.jump | x.sink.branch & bu.condition_met),
+            x_branch_taken.eq(x.sink.jump | x.sink.branch & bu.condition_met)
         ]
 
         f.kill_on(x.sink.branch_predict_taken & x.valid)
