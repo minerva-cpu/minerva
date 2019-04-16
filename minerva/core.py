@@ -145,9 +145,9 @@ class Minerva:
 
         dcache_args = dcache_nb_ways, dcache_nb_lines, dcache_nb_words, dcache_base, dcache_limit
         if with_dcache:
-            self.lsu = CachedLoadStoreUnit(*dcache_args)
+            self.loadstore = CachedLoadStoreUnit(*dcache_args)
         else:
-            self.lsu = SimpleLoadStoreUnit()
+            self.loadstore = SimpleLoadStoreUnit()
 
         if with_debug:
             self.debug = DebugUnit()
@@ -199,7 +199,7 @@ class Minerva:
         decoder    = cpu.submodules.decoder    = self.decoder
         exception  = cpu.submodules.exception  = self.exception
         fetch      = cpu.submodules.fetch      = self.fetch
-        lsu        = cpu.submodules.lsu        = self.lsu
+        loadstore  = cpu.submodules.loadstore  = self.loadstore
         logic      = cpu.submodules.logic      = self.logic
         predict    = cpu.submodules.predict    = self.predict
         shifter    = cpu.submodules.shifter    = self.shifter
@@ -228,7 +228,7 @@ class Minerva:
             cpu.d.comb += [
                 fetch.f_stall.eq(f.stall),
                 fetch.f_valid.eq(f.valid),
-                fetch.icache.refill_ready.eq(~lsu.dcache.stall_request if self.with_dcache else Const(1))
+                fetch.icache.refill_ready.eq(~loadstore.dcache.stall_request if self.with_dcache else Const(1))
             ]
 
             fetch.icache.flush_on(x.sink.fence_i & x.valid)
@@ -308,36 +308,36 @@ class Minerva:
         cpu.d.comb += exception.x_ebreak.eq(x_ebreak)
 
         cpu.d.comb += [
-            lsu.x_address.eq(adder.result),
-            lsu.x_load.eq(x.sink.load),
-            lsu.x_store.eq(x.sink.store),
-            lsu.x_store_operand.eq(x.sink.src2),
-            lsu.x_mask.eq(x.sink.funct3),
-            lsu.x_stall.eq(x.stall),
-            lsu.x_valid.eq(x.valid & ~exception.x_raise),
-            lsu.w_address.eq(w.sink.result),
-            lsu.w_load_mask.eq(w.sink.load_mask),
-            lsu.w_load_data.eq(w.sink.load_data)
+            loadstore.x_address.eq(adder.result),
+            loadstore.x_load.eq(x.sink.load),
+            loadstore.x_store.eq(x.sink.store),
+            loadstore.x_store_operand.eq(x.sink.src2),
+            loadstore.x_mask.eq(x.sink.funct3),
+            loadstore.x_stall.eq(x.stall),
+            loadstore.x_valid.eq(x.valid & ~exception.x_raise),
+            loadstore.w_address.eq(w.sink.result),
+            loadstore.w_load_mask.eq(w.sink.load_mask),
+            loadstore.w_load_data.eq(w.sink.load_data)
         ]
 
         if self.with_dcache:
             cpu.d.comb += [
-                lsu.m_address.eq(m.sink.result),
-                lsu.m_load.eq(m.sink.load),
-                lsu.m_store.eq(m.sink.store),
-                lsu.m_dbus_sel.eq(m.sink.dbus_sel),
-                lsu.m_store_data.eq(m.sink.store_data),
-                lsu.m_stall.eq(m.stall),
-                lsu.m_valid.eq(m.valid & ~m.sink.exception)
+                loadstore.m_address.eq(m.sink.result),
+                loadstore.m_load.eq(m.sink.load),
+                loadstore.m_store.eq(m.sink.store),
+                loadstore.m_dbus_sel.eq(m.sink.dbus_sel),
+                loadstore.m_store_data.eq(m.sink.store_data),
+                loadstore.m_stall.eq(m.stall),
+                loadstore.m_valid.eq(m.valid & ~m.sink.exception)
             ]
 
-            x.stall_on((lsu.x_load | lsu.x_store) & ~lsu.x_dcache_select & lsu.x_valid \
-                    & (self.dbus.cyc | lsu.wrbuf.readable | lsu.dcache.refill_request))
-            m.stall_on(lsu.m_load & ~lsu.m_dcache_select & lsu.m_valid & self.dbus.cyc)
-            m.stall_on((lsu.m_store | lsu.m_load) & ~lsu.m_dcache_select & lsu.m_valid \
-                    & lsu.wrbuf.readable)
-            m.stall_on(lsu.m_store & lsu.m_dcache_select & lsu.m_valid & ~lsu.wrbuf.writable)
-            m.stall_on(lsu.dcache.stall_request)
+            x.stall_on((loadstore.x_load | loadstore.x_store) & ~loadstore.x_dcache_select & loadstore.x_valid \
+                    & (self.dbus.cyc | loadstore.wrbuf.readable | loadstore.dcache.refill_request))
+            m.stall_on(loadstore.m_load & ~loadstore.m_dcache_select & loadstore.m_valid & self.dbus.cyc)
+            m.stall_on((loadstore.m_store | loadstore.m_load) & ~loadstore.m_dcache_select & loadstore.m_valid \
+                    & loadstore.wrbuf.readable)
+            m.stall_on(loadstore.m_store & loadstore.m_dcache_select & loadstore.m_valid & ~loadstore.wrbuf.writable)
+            m.stall_on(loadstore.dcache.stall_request)
         else:
             m.stall_on(self.dbus.cyc)
 
@@ -345,9 +345,9 @@ class Minerva:
             with cpu.If(self.debug.halt & self.debug.halted):
                 cpu.d.comb += self.debug.dbus.connect(self.dbus)
             with cpu.Else():
-                cpu.d.comb += lsu.dbus.connect(self.dbus)
+                cpu.d.comb += loadstore.dbus.connect(self.dbus)
         else:
-            cpu.d.comb += lsu.dbus.connect(self.dbus)
+            cpu.d.comb += loadstore.dbus.connect(self.dbus)
 
         # RAW hazard management
 
@@ -405,7 +405,7 @@ class Minerva:
             cpu.d.comb += m_result.eq(m.sink.result)
 
         with cpu.If(w.sink.load):
-            cpu.d.comb += w_result.eq(lsu.w_load_result)
+            cpu.d.comb += w_result.eq(loadstore.w_load_result)
         with cpu.Else():
             cpu.d.comb += w_result.eq(w.sink.result)
 
@@ -527,7 +527,7 @@ class Minerva:
 
             halted = x.stall & ~reduce(or_, (s.valid for s in (m, w)))
             if self.with_dcache:
-                halted &= ~lsu.wrbuf.readable
+                halted &= ~loadstore.wrbuf.readable
             cpu.d.sync += debug.halted.eq(halted)
 
             with cpu.If(debug.resumereq):
@@ -538,7 +538,7 @@ class Minerva:
             if self.with_icache:
                 fetch.icache.flush_on(debug.resumereq)
             if self.with_dcache:
-                lsu.dcache.flush_on(debug.resumereq)
+                loadstore.dcache.flush_on(debug.resumereq)
 
         # pipeline registers
 
@@ -606,8 +606,8 @@ class Minerva:
                 x.source.load.eq(x.sink.load),
                 x.source.load_mask.eq(x.sink.funct3),
                 x.source.store.eq(x.sink.store),
-                x.source.dbus_sel.eq(lsu.x_dbus_sel),
-                x.source.store_data.eq(lsu.x_store_data),
+                x.source.dbus_sel.eq(loadstore.x_dbus_sel),
+                x.source.store_data.eq(loadstore.x_store_data),
                 x.source.compare.eq(x.sink.compare),
                 x.source.shift.eq(x.sink.shift),
                 x.source.exception.eq(exception.x_raise),
@@ -626,7 +626,7 @@ class Minerva:
                 m.source.rd.eq(m.sink.rd),
                 m.source.load.eq(m.sink.load),
                 m.source.load_mask.eq(m.sink.load_mask),
-                m.source.load_data.eq(lsu.m_load_data),
+                m.source.load_data.eq(loadstore.m_load_data),
                 m.source.rd_we.eq(m.sink.rd_we),
                 m.source.result.eq(m_result),
                 m.source.exception.eq(m.sink.exception)
