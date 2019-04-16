@@ -12,7 +12,7 @@ from ..wishbone import Cycle, wishbone_layout
 __all__ = ["SimpleLoadStoreUnit", "CachedLoadStoreUnit"]
 
 
-class _LoadStoreUnit:
+class _LoadStoreUnitBase:
     def __init__(self):
         self.dbus = Record(wishbone_layout)
 
@@ -22,6 +22,7 @@ class _LoadStoreUnit:
         self.x_store_operand = Signal(32)
         self.x_mask = Signal(3)
         self.x_stall = Signal()
+        self.x_valid = Signal()
         self.w_address = Signal(32)
         self.w_load_mask = Signal(3)
         self.w_load_data = Signal(32)
@@ -98,7 +99,7 @@ class _LoadStoreUnit:
         return m
 
 
-class SimpleLoadStoreUnit(_LoadStoreUnit):
+class SimpleLoadStoreUnit(_LoadStoreUnitBase):
     def elaborate(self, platform):
         m = Module()
         m.submodules += super().elaborate(platform)
@@ -111,40 +112,42 @@ class SimpleLoadStoreUnit(_LoadStoreUnit):
                     self.m_load_data.eq(self.dbus.dat_r)
                 ]
             m.d.sync += self.m_bus_error.eq(self.dbus.err)
-        with m.Elif(self.x_store & ~self.x_stall):
-            m.d.sync += [
-                self.dbus.cyc.eq(1),
-                self.dbus.stb.eq(1),
-                self.dbus.we.eq(1),
-                self.dbus.adr.eq(self.x_address[2:]),
-                self.dbus.dat_w.eq(self.x_store_data),
-                self.dbus.sel.eq(self.x_dbus_sel)
-            ]
-        with m.Elif(self.x_load & ~self.x_stall):
-            m.d.sync += [
-                self.dbus.cyc.eq(1),
-                self.dbus.stb.eq(1),
-                self.dbus.we.eq(0),
-                self.dbus.adr.eq(self.x_address[2:]),
-                self.dbus.sel.eq(self.x_dbus_sel)
-            ]
+        with m.Elif(self.x_valid & ~self.x_stall):
+            with m.If(self.x_store):
+                m.d.sync += [
+                    self.dbus.cyc.eq(1),
+                    self.dbus.stb.eq(1),
+                    self.dbus.we.eq(1),
+                    self.dbus.adr.eq(self.x_address[2:]),
+                    self.dbus.dat_w.eq(self.x_store_data),
+                    self.dbus.sel.eq(self.x_dbus_sel)
+                ]
+            with m.Elif(self.x_load):
+                m.d.sync += [
+                    self.dbus.cyc.eq(1),
+                    self.dbus.stb.eq(1),
+                    self.dbus.we.eq(0),
+                    self.dbus.adr.eq(self.x_address[2:]),
+                    self.dbus.sel.eq(self.x_dbus_sel)
+                ]
 
         return m
 
 
-class CachedLoadStoreUnit(_LoadStoreUnit):
+class CachedLoadStoreUnit(_LoadStoreUnitBase):
     def __init__(self, *dcache_args):
         super().__init__()
 
         self.m_address = Signal(32)
-        self.m_dcache_select = Signal()
         self.m_load = Signal()
         self.m_store = Signal()
         self.m_dbus_sel = Signal(4)
         self.m_store_data = Signal(32)
         self.m_stall = Signal()
+        self.m_valid = Signal()
 
         self.x_dcache_select = Signal()
+        self.m_dcache_select = Signal()
 
         self.dcache = L1Cache(*dcache_args)
         self.wrbuf_din = Record([("adr", 30), ("sel", 4), ("dat_w", 32)])
@@ -159,16 +162,21 @@ class CachedLoadStoreUnit(_LoadStoreUnit):
             dcache.s1_address.eq(self.x_address[2:]),
             dcache.s1_stall.eq(self.x_stall),
             dcache.s2_address.eq(self.m_address[2:]),
-            dcache.s2_re.eq(self.m_load & self.m_dcache_select),
-            dcache.s2_we.eq(self.m_store & self.m_dcache_select),
+            dcache.s2_re.eq(self.m_load & self.m_valid & self.m_dcache_select),
+            dcache.s2_we.eq(self.m_store & self.m_valid & self.m_dcache_select),
             dcache.s2_sel.eq(Mux(self.m_dbus_sel == 0, 0b1111, self.m_dbus_sel)),
             dcache.s2_dat_w.eq(self.m_store_data),
             dcache.refill_address.eq(self.dbus.adr),
             dcache.refill_valid.eq(self.dbus.cyc & ~self.dbus.we & self.dbus.ack),
             dcache.refill_data.eq(self.dbus.dat_r),
-            self.x_dcache_select.eq((self.x_address >= dcache.base) & (self.x_address < dcache.limit)),
-            self.m_load_data.eq(Mux(self.m_dcache_select, dcache.s2_dat_r, self.dbus.dat_r))
+            self.x_dcache_select.eq((self.x_address >= dcache.base) & (self.x_address < dcache.limit))
         ]
+
+        with m.If(~self.x_stall):
+            m.d.sync += self.m_dcache_select.eq(self.x_dcache_select)
+
+        dbus_load_data = Signal.like(self.dbus.dat_r)
+        m.d.comb += self.m_load_data.eq(Mux(self.m_dcache_select, dcache.s2_dat_r, dbus_load_data))
 
         wrbuf_din = self.wrbuf_din
         wrbuf_dout = Record(wrbuf_din.layout)
@@ -179,7 +187,7 @@ class CachedLoadStoreUnit(_LoadStoreUnit):
             wrbuf_din.dat_w.eq(self.m_store_data),
             wrbuf.din.eq(wrbuf_din),
             wrbuf_dout.eq(wrbuf.dout),
-            wrbuf.we.eq(self.m_store & self.m_dcache_select & ~self.m_stall),
+            wrbuf.we.eq(self.m_store & self.m_dcache_select & self.m_valid & ~self.m_stall),
             dcache.refill_ready.eq(~wrbuf.readable & ~(self.dbus.cyc & self.dbus.we))
         ]
 
@@ -200,7 +208,8 @@ class CachedLoadStoreUnit(_LoadStoreUnit):
                         self.dbus.cyc.eq(0),
                         self.dbus.stb.eq(0),
                         self.dbus.sel.eq(0),
-                        self.dbus.we.eq(0)
+                        self.dbus.we.eq(0),
+                        dbus_load_data.eq(self.dbus.dat_r)
                     ]
                 with m.Else():
                     m.d.sync += [
@@ -227,23 +236,24 @@ class CachedLoadStoreUnit(_LoadStoreUnit):
                 self.dbus.cyc.eq(1),
                 self.dbus.stb.eq(1)
             ]
-        with m.Elif(self.x_store & ~self.x_dcache_select & ~self.x_stall):
-            m.d.sync += [
-                self.dbus.adr.eq(self.x_address[2:]),
-                self.dbus.sel.eq(self.x_dbus_sel),
-                self.dbus.dat_w.eq(self.x_store_data),
-                self.dbus.cti.eq(Cycle.END),
-                self.dbus.cyc.eq(1),
-                self.dbus.stb.eq(1),
-                self.dbus.we.eq(1)
-            ]
-        with m.Elif(self.x_load & ~self.x_dcache_select & ~self.x_stall):
-            m.d.sync += [
-                self.dbus.adr.eq(self.x_address[2:]),
-                self.dbus.sel.eq(self.x_dbus_sel),
-                self.dbus.cti.eq(Cycle.END),
-                self.dbus.cyc.eq(1),
-                self.dbus.stb.eq(1)
-            ]
+        with m.Elif(~self.x_dcache_select & self.x_valid & ~self.x_stall):
+            with m.If(self.x_store):
+                m.d.sync += [
+                    self.dbus.adr.eq(self.x_address[2:]),
+                    self.dbus.sel.eq(self.x_dbus_sel),
+                    self.dbus.dat_w.eq(self.x_store_data),
+                    self.dbus.cti.eq(Cycle.END),
+                    self.dbus.cyc.eq(1),
+                    self.dbus.stb.eq(1),
+                    self.dbus.we.eq(1)
+                ]
+            with m.Elif(self.x_load):
+                m.d.sync += [
+                    self.dbus.adr.eq(self.x_address[2:]),
+                    self.dbus.sel.eq(self.x_dbus_sel),
+                    self.dbus.cti.eq(Cycle.END),
+                    self.dbus.cyc.eq(1),
+                    self.dbus.stb.eq(1)
+                ]
 
         return m

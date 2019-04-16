@@ -81,7 +81,6 @@ _xm_layout = [
     ("bypass_m",             1),
     ("result",              32),
     ("shift",                1),
-    ("dcache_select",        1),
     ("load",                 1),
     ("load_mask",            3),
     ("store",                1),
@@ -277,23 +276,21 @@ class Minerva:
                     self.dcache_base, self.dcache_limit)
             cpu.d.comb += [
                 lsu.m_address.eq(m.sink.result),
-                lsu.m_dcache_select.eq(m.sink.dcache_select),
-                lsu.m_load.eq(m.sink.load & m.valid),
-                lsu.m_store.eq(m.sink.store & m.valid),
+                lsu.m_load.eq(m.sink.load),
+                lsu.m_store.eq(m.sink.store),
                 lsu.m_dbus_sel.eq(m.sink.dbus_sel),
                 lsu.m_store_data.eq(m.sink.store_data),
-                lsu.m_stall.eq(m.stall)
+                lsu.m_stall.eq(m.stall),
+                lsu.m_valid.eq(m.valid)
             ]
 
-            x.stall_on((lsu.x_load | lsu.x_store) & ~lsu.x_dcache_select \
+            x.stall_on((lsu.x_load | lsu.x_store) & ~lsu.x_dcache_select & lsu.x_valid \
                     & (self.dbus.cyc | lsu.wrbuf.readable | lsu.dcache.refill_request))
-            m.stall_on(lsu.m_load & ~lsu.m_dcache_select & self.dbus.cyc & ~self.dbus.ack)
-            m.stall_on(lsu.m_store & lsu.m_dcache_select & ~lsu.wrbuf.writable)
-            m.stall_on((lsu.m_store | lsu.m_load) & ~lsu.m_dcache_select & lsu.wrbuf.readable)
+            m.stall_on(lsu.m_load & ~lsu.m_dcache_select & lsu.m_valid & self.dbus.cyc)
+            m.stall_on((lsu.m_store | lsu.m_load) & ~lsu.m_dcache_select & lsu.m_valid \
+                    & lsu.wrbuf.readable)
+            m.stall_on(lsu.m_store & lsu.m_dcache_select & lsu.m_valid & ~lsu.wrbuf.writable)
             m.stall_on(lsu.dcache.stall_request)
-
-            with cpu.If(~x.stall):
-                cpu.d.sync += x.source.dcache_select.eq(lsu.x_dcache_select)
 
             if self.with_icache:
                 cpu.d.comb += dcache_stall_request.eq(lsu.dcache.stall_request)
@@ -303,11 +300,12 @@ class Minerva:
 
         cpu.d.comb += [
             lsu.x_address.eq(adder.result),
-            lsu.x_load.eq(x.sink.load & x.valid),
-            lsu.x_store.eq(x.sink.store & x.valid),
+            lsu.x_load.eq(x.sink.load),
+            lsu.x_store.eq(x.sink.store),
             lsu.x_store_operand.eq(x.sink.src2),
             lsu.x_mask.eq(x.sink.funct3),
             lsu.x_stall.eq(x.stall),
+            lsu.x_valid.eq(x.valid),
             lsu.w_address.eq(w.sink.result),
             lsu.w_load_mask.eq(w.sink.load_mask),
             lsu.w_load_data.eq(w.sink.load_data)
