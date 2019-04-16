@@ -244,9 +244,9 @@ class Minerva:
             logic.src2.eq(x.sink.src2)
         ]
 
-        adder = cpu.submodules.adder = AdderUnit()
+        adder = cpu.submodules.adder = Adder()
         cpu.d.comb += [
-            adder.op.eq(x.sink.adder_sub),
+            adder.sub.eq(x.sink.adder_sub),
             adder.src1.eq(x.sink.src1),
             adder.src2.eq(Mux(x.sink.store, x.sink.immediate, x.sink.src2))
         ]
