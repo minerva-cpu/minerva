@@ -9,13 +9,14 @@ from .isa import *
 from .stage import *
 
 from .units.adder import *
-from .units.branch import *
+from .units.compare import *
 from .units.debug import *
 from .units.decoder import *
 from .units.ifetch import *
 from .units.loadstore import *
 from .units.logic import *
 from .units.regfile import *
+from .units.predict import *
 from .units.shifter import *
 
 from .units.debug.jtag import jtag_layout
@@ -251,14 +252,14 @@ class Minerva:
             adder.src2.eq(Mux(x.sink.store, x.sink.immediate, x.sink.src2))
         ]
 
-        bu = cpu.submodules.bu = BranchUnit()
+        compare = cpu.submodules.compare = CompareUnit()
         cpu.d.comb += [
             # share condition signal between compare and branch instructions
-            bu.condition.eq(Mux(x.sink.compare, x.sink.funct3 << 1, x.sink.funct3)),
-            bu.cmp_zero.eq(x.sink.src1 == x.sink.src2),
-            bu.cmp_negative.eq(adder.result[-1]),
-            bu.cmp_overflow.eq(adder.overflow),
-            bu.cmp_carry.eq(adder.carry)
+            compare.condition.eq(Mux(x.sink.compare, x.sink.funct3 << 1, x.sink.funct3)),
+            compare.zero.eq(x.sink.src1 == x.sink.src2),
+            compare.negative.eq(adder.result[-1]),
+            compare.overflow.eq(adder.overflow),
+            compare.carry.eq(adder.carry)
         ]
 
         shifter = cpu.submodules.shifter = Shifter()
@@ -437,21 +438,21 @@ class Minerva:
 
         # branch prediction
 
-        bp = cpu.submodules.bp = BranchPredictor()
+        predict = cpu.submodules.predict = BranchPredictor()
         cpu.d.comb += [
-            bp.d_branch.eq(decoder.branch),
-            bp.d_jump.eq(decoder.jump),
-            bp.d_offset.eq(decoder.immediate),
-            bp.d_pc.eq(d.sink.pc),
-            bp.d_rs1_re.eq(decoder.rs1_re),
-            bp.d_src1.eq(d_src1)
+            predict.d_branch.eq(decoder.branch),
+            predict.d_jump.eq(decoder.jump),
+            predict.d_offset.eq(decoder.immediate),
+            predict.d_pc.eq(d.sink.pc),
+            predict.d_rs1_re.eq(decoder.rs1_re),
+            predict.d_src1.eq(d_src1)
         ]
 
         x_branch_taken = Signal()
         cpu.d.comb += [
-            d_branch_predict_taken.eq(bp.d_branch_predict_taken),
-            d_branch_target.eq(bp.d_branch_target),
-            x_branch_taken.eq(x.sink.jump | x.sink.branch & bu.condition_met)
+            d_branch_predict_taken.eq(predict.d_branch_taken),
+            d_branch_target.eq(predict.d_branch_target),
+            x_branch_taken.eq(x.sink.jump | x.sink.branch & compare.condition_met)
         ]
 
         f.kill_on(x.sink.branch_predict_taken & x.valid)
@@ -549,8 +550,8 @@ class Minerva:
                 d.source.illegal.eq(decoder.illegal),
                 d.source.src1.eq(d_src1),
                 d.source.src2.eq(d_src2),
-                d.source.branch_predict_taken.eq(bp.d_branch_predict_taken),
-                d.source.branch_target.eq(bp.d_branch_target)
+                d.source.branch_predict_taken.eq(predict.d_branch_taken),
+                d.source.branch_target.eq(predict.d_branch_target)
             ]
 
         # X/M
@@ -572,7 +573,7 @@ class Minerva:
                 x.source.csr_result.eq(x_csr_result),
                 x.source.exception.eq(x_exception),
                 x.source.mret.eq(x.sink.mret),
-                x.source.condition_met.eq(bu.condition_met),
+                x.source.condition_met.eq(compare.condition_met),
                 x.source.branch_taken.eq(x_branch_taken | x_exception | x.sink.mret),
                 x.source.branch_predict_taken.eq(x.sink.branch_predict_taken & ~x_exception),
                 x.source.mcause.interrupt.eq(mstatus.dat_r.mie & ~interrupt_pe.n),
