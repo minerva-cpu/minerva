@@ -28,6 +28,8 @@ class DebugUnit(AutoCSR):
         self.jtag = Record(jtag_layout)
         self.dbus = Record(wishbone_layout)
 
+        self.trigger_haltreq = Signal()
+
         self.x_ebreak = Signal()
         self.x_pc = Signal(30)
         self.x_stall = Signal()
@@ -81,6 +83,8 @@ class DebugUnit(AutoCSR):
         ]
 
         m.d.comb += [
+            controller.trigger_haltreq.eq(self.trigger_haltreq),
+
             controller.x_ebreak.eq(self.x_ebreak),
             controller.x_pc.eq(self.x_pc),
             controller.x_stall.eq(self.x_stall),

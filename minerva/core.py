@@ -20,6 +20,7 @@ from .units.loadstore import *
 from .units.logic import *
 from .units.predict import *
 from .units.shifter import *
+from .units.trigger import *
 
 from .units.debug.jtag import jtag_layout
 from .wishbone import wishbone_layout
@@ -121,7 +122,9 @@ class Minerva:
                 with_dcache=True,
                 dcache_nb_ways=1, dcache_nb_lines=512, dcache_nb_words=8,
                 dcache_base=0, dcache_limit=2**31,
-                with_debug=False):
+                with_debug=False,
+                with_trigger=False, nb_triggers=8):
+
         self.external_interrupt = Signal(32)
         self.timer_interrupt = Signal()
         self.ibus = Record(wishbone_layout)
@@ -136,6 +139,7 @@ class Minerva:
         self.with_icache   = with_icache
         self.with_dcache   = with_dcache
         self.with_debug    = with_debug
+        self.with_trigger  = with_trigger
 
         icache_args = icache_nb_ways, icache_nb_lines, icache_nb_words, icache_base, icache_limit
         if with_icache:
@@ -151,6 +155,9 @@ class Minerva:
 
         if with_debug:
             self.debug = DebugUnit()
+
+        if with_trigger:
+            self.trigger = TriggerUnit(nb_triggers)
 
         self.adder      = Adder()
         self.compare    = CompareUnit()
@@ -305,6 +312,8 @@ class Minerva:
             # We do not want to raise an exception in this case because Debug Mode
             # should be invisible to software execution.
             x_ebreak &= ~self.debug.dcsr_ebreakm
+        if self.with_trigger:
+            x_ebreak |= self.trigger.trap
         cpu.d.comb += exception.x_ebreak.eq(x_ebreak)
 
         cpu.d.comb += [
@@ -497,6 +506,10 @@ class Minerva:
                 debug.m_valid.eq(m.valid)
             ]
 
+            if self.with_trigger:
+                cpu.d.comb += debug.trigger_haltreq.eq(self.trigger.haltreq)
+            else:
+                cpu.d.comb += debug.trigger_haltreq.eq(Const(0))
 
             csrf_debug_rp = csrf.read_port()
             csrf_debug_wp = csrf.write_port()
@@ -539,6 +552,13 @@ class Minerva:
                 fetch.icache.flush_on(debug.resumereq)
             if self.with_dcache:
                 loadstore.dcache.flush_on(debug.resumereq)
+
+        if self.with_trigger:
+            trigger = cpu.submodules.trigger = self.trigger
+            cpu.d.comb += [
+                trigger.x_pc.eq(x.sink.pc),
+                trigger.x_valid.eq(x.valid),
+            ]
 
         # pipeline registers
 

@@ -33,6 +33,8 @@ class DebugController(AutoCSR):
         self.command    = debugrf.reg_port(DebugReg.COMMAND)
         self.data0      = debugrf.reg_port(DebugReg.DATA0)
 
+        self.trigger_haltreq = Signal()
+
         self.x_pc = Signal(30)
         self.x_ebreak = Signal()
         self.x_stall = Signal()
@@ -94,6 +96,7 @@ class DebugController(AutoCSR):
         halt_pe = m.submodules.halt_pe = PriorityEncoder(5)
         m.d.comb += [
             halt_pe.i[HaltCause.EBREAK].eq(m_breakpoint & self.m_valid),
+            halt_pe.i[HaltCause.TRIGGER].eq(self.trigger_haltreq),
             halt_pe.i[HaltCause.HALTREQ].eq(self.dmcontrol.r.haltreq),
             halt_pe.i[HaltCause.STEP].eq(self.dcsr.r.step & self.m_valid),
         ]

@@ -3,7 +3,7 @@ from .csr import *
 __all__ = [
     "Opcode", "Funct3", "Funct7", "Funct12", "CSRIndex", "CSRMode", "Cause",
     "flat_layout", "misa_layout", "mstatus_layout", "mtvec_layout", "mip_layout",
-    "mie_layout", "mcause_layout", "dcsr_layout"
+    "mie_layout", "mcause_layout", "dcsr_layout", "tdata1_layout"
 ]
 
 class Opcode:
@@ -63,6 +63,13 @@ class CSRIndex:
     # µarch specific
     IRQ_MASK    = 0x330
     IRQ_PENDING = 0x360
+    # trigger module
+    TSELECT     = 0x7a0
+    TDATA1      = 0x7a1
+    TDATA2      = 0x7a2
+    TDATA3      = 0x7a3
+    TINFO       = 0x7a4
+    MCONTEXT    = 0x7a8
     # debug module
     DCSR        = 0x7b0
     DPC         = 0x7b1
@@ -203,4 +210,11 @@ dcsr_layout = [
     ("ebreakm",    1, CSRAccess.WARL), # EBREAKs in M-mode enter Debug Mode
     ("zero2",     12, CSRAccess.WPRI),
     ("xdebugver",  4, CSRAccess.WLRL)  # External Debug specification version
+]
+
+
+tdata1_layout = [
+    ("data",  27, CSRAccess.WARL),
+    ("dmode",  1, CSRAccess.WARL),
+    ("type",   4, CSRAccess.WARL)
 ]
