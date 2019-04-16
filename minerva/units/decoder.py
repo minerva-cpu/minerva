@@ -38,6 +38,8 @@ class InstructionDecoder:
         self.adder = Signal()
         self.adder_sub = Signal()
         self.logic = Signal()
+        self.multiply = Signal()
+        self.divide = Signal()
         self.shift = Signal()
         self.direction = Signal()
         self.sext = Signal()
@@ -144,18 +146,18 @@ class InstructionDecoder:
 
         m.d.comb += [
             self.compare.eq(matcher([
-                (Opcode.OP_IMM_32, Funct3.SLT),  # slti
-                (Opcode.OP_IMM_32, Funct3.SLTU), # sltiu
-                (Opcode.OP_32,     Funct3.SLT),  # slt
-                (Opcode.OP_32,     Funct3.SLTU)  # sltu
+                (Opcode.OP_IMM_32, Funct3.SLT,  None), # slti
+                (Opcode.OP_IMM_32, Funct3.SLTU, None), # sltiu
+                (Opcode.OP_32,     Funct3.SLT,  0),    # slt
+                (Opcode.OP_32,     Funct3.SLTU, 0)     # sltu
             ])),
             self.branch.eq(matcher([
-                (Opcode.BRANCH, Funct3.BEQ),  # beq
-                (Opcode.BRANCH, Funct3.BNE),  # bne
-                (Opcode.BRANCH, Funct3.BLT),  # blt
-                (Opcode.BRANCH, Funct3.BGE),  # bge
-                (Opcode.BRANCH, Funct3.BLTU), # bltu
-                (Opcode.BRANCH, Funct3.BGEU)  # bgeu
+                (Opcode.BRANCH, Funct3.BEQ,  None), # beq
+                (Opcode.BRANCH, Funct3.BNE,  None), # bne
+                (Opcode.BRANCH, Funct3.BLT,  None), # blt
+                (Opcode.BRANCH, Funct3.BGE,  None), # bge
+                (Opcode.BRANCH, Funct3.BLTU, None), # bltu
+                (Opcode.BRANCH, Funct3.BGEU, None)  # bgeu
             ])),
 
             self.adder.eq(matcher([
@@ -166,12 +168,26 @@ class InstructionDecoder:
             self.adder_sub.eq(self.rs2_re & (funct7 == Funct7.SUB) | self.compare | self.branch),
 
             self.logic.eq(matcher([
-                (Opcode.OP_IMM_32, Funct3.XOR), # xori
-                (Opcode.OP_IMM_32, Funct3.OR),  # ori
-                (Opcode.OP_IMM_32, Funct3.AND), # andi
-                (Opcode.OP_32,     Funct3.XOR), # xor
-                (Opcode.OP_32,     Funct3.OR),  # or
-                (Opcode.OP_32,     Funct3.AND)  # and
+                (Opcode.OP_IMM_32, Funct3.XOR, None), # xori
+                (Opcode.OP_IMM_32, Funct3.OR,  None), # ori
+                (Opcode.OP_IMM_32, Funct3.AND, None), # andi
+                (Opcode.OP_32,     Funct3.XOR, 0),    # xor
+                (Opcode.OP_32,     Funct3.OR,  0),    # or
+                (Opcode.OP_32,     Funct3.AND, 0)     # and
+            ])),
+
+            self.multiply.eq(matcher([
+                (Opcode.OP_32, Funct3.MUL,    Funct7.MULDIV), # mul
+                (Opcode.OP_32, Funct3.MULH,   Funct7.MULDIV), # mulh
+                (Opcode.OP_32, Funct3.MULHSU, Funct7.MULDIV), # mulhsu
+                (Opcode.OP_32, Funct3.MULHU,  Funct7.MULDIV), # mulhu
+            ])),
+
+            self.divide.eq(matcher([
+                (Opcode.OP_32, Funct3.DIV,  Funct7.MULDIV), # div
+                (Opcode.OP_32, Funct3.DIVU, Funct7.MULDIV), # divu
+                (Opcode.OP_32, Funct3.REM,  Funct7.MULDIV), # rem
+                (Opcode.OP_32, Funct3.REMU, Funct7.MULDIV)  # remu
             ])),
 
             self.shift.eq(matcher([
@@ -226,10 +242,10 @@ class InstructionDecoder:
             self.mret.eq(self.privileged & (funct12 == Funct12.MRET)),
 
             self.bypass_x.eq(self.adder | self.logic | self.lui | self.auipc | self.csr),
-            self.bypass_m.eq(self.compare | self.shift),
+            self.bypass_m.eq(self.compare | self.multiply | self.divide | self.shift),
 
             self.illegal.eq((self.instruction[:2] != 0b11) | ~reduce(or_, (
-                self.compare, self.branch, self.adder, self.logic, self.shift,
+                self.compare, self.branch, self.adder, self.logic, self.multiply, self.divide, self.shift,
                 self.lui, self.auipc, self.jump, self.load, self.store,
                 self.csr, self.ecall, self.ebreak, self.mret
             )))

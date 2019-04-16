@@ -14,10 +14,12 @@ from .units.adder import *
 from .units.compare import *
 from .units.debug import *
 from .units.decoder import *
+from .units.divider import *
 from .units.exception import *
 from .units.fetch import *
 from .units.loadstore import *
 from .units.logic import *
+from .units.multiplier import *
 from .units.predict import *
 from .units.shifter import *
 from .units.trigger import *
@@ -60,6 +62,8 @@ _dx_layout = [
     ("store",                1),
     ("adder_sub",            1),
     ("logic",                1),
+    ("multiply",             1),
+    ("divide",               1),
     ("shift",                1),
     ("direction",            1),
     ("sext",                 1),
@@ -93,6 +97,8 @@ _xm_layout = [
     ("dbus_sel",             4),
     ("store_data",          32),
     ("compare",              1),
+    ("multiply",             1),
+    ("divide",               1),
     ("condition_met",        1),
     ("branch_target",       32),
     ("branch_taken",         1),
@@ -162,8 +168,10 @@ class Minerva:
         self.adder      = Adder()
         self.compare    = CompareUnit()
         self.decoder    = InstructionDecoder()
+        self.divider    = Divider()
         self.exception  = ExceptionUnit()
         self.logic      = LogicUnit()
+        self.multiplier = Multiplier()
         self.predict    = BranchPredictor()
         self.shifter    = Shifter()
 
@@ -204,10 +212,12 @@ class Minerva:
         adder      = cpu.submodules.adder      = self.adder
         compare    = cpu.submodules.compare    = self.compare
         decoder    = cpu.submodules.decoder    = self.decoder
+        divider    = cpu.submodules.divider    = self.divider
         exception  = cpu.submodules.exception  = self.exception
         fetch      = cpu.submodules.fetch      = self.fetch
         loadstore  = cpu.submodules.loadstore  = self.loadstore
         logic      = cpu.submodules.logic      = self.logic
+        multiplier = cpu.submodules.multiplier = self.multiplier
         predict    = cpu.submodules.predict    = self.predict
         shifter    = cpu.submodules.shifter    = self.shifter
 
@@ -275,6 +285,22 @@ class Minerva:
             adder.src1.eq(x.sink.src1),
             adder.src2.eq(Mux(x.sink.store, x.sink.immediate, x.sink.src2))
         ]
+
+        cpu.d.comb += [
+            multiplier.x_op.eq(x.sink.funct3),
+            multiplier.x_src1.eq(x.sink.src1),
+            multiplier.x_src2.eq(x.sink.src2),
+            multiplier.x_stall.eq(x.stall)
+        ]
+
+        cpu.d.comb += [
+            divider.x_op.eq(x.sink.funct3),
+            divider.x_src1.eq(x.sink.src1),
+            divider.x_src2.eq(x.sink.src2),
+            divider.x_valid.eq(x.sink.valid & ~exception.x_raise),
+            divider.x_stall.eq(x.stall)
+        ]
+        m.stall_on(divider.m_divide_ongoing)
 
         cpu.d.comb += [
             shifter.x_direction.eq(x.sink.direction),
@@ -408,6 +434,10 @@ class Minerva:
 
         with cpu.If(m.sink.compare):
             cpu.d.comb += m_result.eq(m.sink.condition_met)
+        with cpu.Elif(m.sink.multiply):
+            cpu.d.comb += m_result.eq(multiplier.m_result)
+        with cpu.Elif(m.sink.divide):
+            cpu.d.comb += m_result.eq(divider.m_result)
         with cpu.Elif(m.sink.shift):
             cpu.d.comb += m_result.eq(shifter.m_result)
         with cpu.Else():
@@ -597,6 +627,8 @@ class Minerva:
                 d.source.adder_sub.eq(decoder.adder_sub),
                 d.source.compare.eq(decoder.compare),
                 d.source.logic.eq(decoder.logic),
+                d.source.multiply.eq(decoder.multiply),
+                d.source.divide.eq(decoder.divide),
                 d.source.shift.eq(decoder.shift),
                 d.source.direction.eq(decoder.direction),
                 d.source.sext.eq(decoder.sext),
@@ -629,6 +661,8 @@ class Minerva:
                 x.source.dbus_sel.eq(loadstore.x_dbus_sel),
                 x.source.store_data.eq(loadstore.x_store_data),
                 x.source.compare.eq(x.sink.compare),
+                x.source.multiply.eq(x.sink.multiply),
+                x.source.divide.eq(x.sink.divide),
                 x.source.shift.eq(x.sink.shift),
                 x.source.exception.eq(exception.x_raise),
                 x.source.mret.eq(x.sink.mret),

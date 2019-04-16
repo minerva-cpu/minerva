@@ -33,6 +33,7 @@ class Funct3:
 
 class Funct7:
     SRL = ADD = 0b0000000
+    MULDIV    = 0b0000001
     SRA = SUB = 0b0100000
 
 
