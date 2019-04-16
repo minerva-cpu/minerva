@@ -1,47 +1,54 @@
-from operator import and_
-
 from nmigen import *
 
 from ..cache import L1Cache
 from ..wishbone import Cycle, wishbone_layout
 
 
-__all__ = ["SimpleInstructionUnit", "CachedInstructionUnit"]
+__all__ = ["SimpleFetchUnit", "CachedFetchUnit"]
 
 
-class _InstructionUnit:
+class _FetchUnitBase:
     def __init__(self):
         self.ibus = Record(wishbone_layout)
 
         self.a_stall = Signal()
         self.f_pc = Signal(30)
         self.d_branch_predict_taken = Signal()
-        self.d_branch_target = Signal(30)
+        self.d_branch_target = Signal(32)
+        self.d_valid = Signal()
         self.x_pc = Signal(30)
         self.m_branch_taken = Signal()
-        self.m_branch_target = Signal(30)
+        self.m_branch_target = Signal(32)
         self.m_branch_predict_taken = Signal()
+        self.m_valid = Signal()
 
         self.a_pc = Signal(30)
+        self.a_misaligned_fetch = Signal()
         self.f_instruction = Signal(32)
         self.f_bus_error = Signal()
 
     def elaborate(self, platform):
         m = Module()
 
-        with m.If(self.d_branch_predict_taken):
-            m.d.comb += self.a_pc.eq(self.d_branch_target)
-        with m.Elif(self.m_branch_predict_taken & ~self.m_branch_taken):
+        with m.If(self.d_branch_predict_taken & self.d_valid):
+            m.d.comb += [
+                self.a_pc.eq(self.d_branch_target[2:]),
+                self.a_misaligned_fetch.eq(self.d_branch_target[:2].bool())
+            ]
+        with m.Elif(self.m_branch_predict_taken & ~self.m_branch_taken & self.m_valid):
             m.d.comb += self.a_pc.eq(self.x_pc)
-        with m.Elif(~self.m_branch_predict_taken & self.m_branch_taken):
-            m.d.comb += self.a_pc.eq(self.m_branch_target)
+        with m.Elif(~self.m_branch_predict_taken & self.m_branch_taken & self.m_valid):
+            m.d.comb += [
+                self.a_pc.eq(self.m_branch_target[2:]),
+                self.a_misaligned_fetch.eq(self.m_branch_target[:2].bool())
+            ]
         with m.Else():
             m.d.comb += self.a_pc.eq(self.f_pc + 1)
 
         return m
 
 
-class SimpleInstructionUnit(_InstructionUnit):
+class SimpleFetchUnit(_FetchUnitBase):
     def elaborate(self, platform):
         m = Module()
         m.submodules += super().elaborate(platform)
@@ -67,7 +74,7 @@ class SimpleInstructionUnit(_InstructionUnit):
         return m
 
 
-class CachedInstructionUnit(_InstructionUnit):
+class CachedFetchUnit(_FetchUnitBase):
     def __init__(self, *icache_args):
         super().__init__()
 

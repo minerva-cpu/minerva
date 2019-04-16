@@ -12,7 +12,7 @@ from .units.adder import *
 from .units.compare import *
 from .units.debug import *
 from .units.decoder import *
-from .units.ifetch import *
+from .units.fetch import *
 from .units.loadstore import *
 from .units.logic import *
 from .units.regfile import *
@@ -176,41 +176,41 @@ class Minerva:
         # units
 
         if self.with_icache:
-            ifu = cpu.submodules.ifu = CachedInstructionUnit(
+            fetch = cpu.submodules.fetch = CachedFetchUnit(
                     self.icache_nb_ways, self.icache_nb_lines, self.icache_nb_words,
                     self.icache_base, self.icache_limit)
             cpu.d.comb += [
-                ifu.f_stall.eq(f.stall),
-                ifu.f_valid.eq(f.valid),
-                ifu.icache.flush.eq(x.sink.fence_i & x.valid)
+                fetch.f_stall.eq(f.stall),
+                fetch.f_valid.eq(f.valid),
+                fetch.icache.flush.eq(x.sink.fence_i & x.valid)
             ]
             if self.with_dcache:
                 dcache_stall_request = Signal()
-                cpu.d.comb += ifu.icache.refill_ready.eq(~dcache_stall_request)
+                cpu.d.comb += fetch.icache.refill_ready.eq(~dcache_stall_request)
             else:
-                cpu.d.comb += ifu.icache.refill_ready.eq(1)
+                cpu.d.comb += fetch.icache.refill_ready.eq(1)
 
-            x.stall_on(ifu.icache.stall_request)
-            m.stall_on(ifu.icache.stall_request \
-                    & (ifu.m_branch_predict_taken != ifu.m_branch_taken))
-            m.stall_on(self.ibus.cyc & ifu.m_branch_taken)
+            x.stall_on(fetch.icache.stall_request)
+            m.stall_on(fetch.icache.stall_request \
+                    & (fetch.m_branch_predict_taken != fetch.m_branch_taken))
+            m.stall_on(self.ibus.cyc & fetch.m_branch_taken)
         else:
-            ifu = cpu.submodules.ifu = SimpleInstructionUnit()
+            fetch = cpu.submodules.fetch = SimpleFetchUnit()
             m.stall_on(self.ibus.cyc)
 
         d_branch_predict_taken = Signal()
         d_branch_target = Signal(32)
 
         cpu.d.comb += [
-            ifu.ibus.connect(self.ibus),
-            ifu.a_stall.eq(a.stall),
-            ifu.f_pc.eq(f.sink.pc[:30]),
-            ifu.d_branch_predict_taken.eq(d_branch_predict_taken & d.valid),
-            ifu.d_branch_target.eq(d_branch_target[2:]),
-            ifu.x_pc.eq(x.sink.pc[:30]),
-            ifu.m_branch_taken.eq(m.sink.branch_taken & m.valid),
-            ifu.m_branch_target.eq(m.sink.branch_target[2:]),
-            ifu.m_branch_predict_taken.eq(m.sink.branch_predict_taken & m.valid),
+            fetch.ibus.connect(self.ibus),
+            fetch.a_stall.eq(a.stall),
+            fetch.f_pc.eq(f.sink.pc[:30]),
+            fetch.d_branch_predict_taken.eq(d_branch_predict_taken & d.valid),
+            fetch.d_branch_target.eq(d_branch_target[2:]),
+            fetch.x_pc.eq(x.sink.pc[:30]),
+            fetch.m_branch_taken.eq(m.sink.branch_taken & m.valid),
+            fetch.m_branch_target.eq(m.sink.branch_target[2:]),
+            fetch.m_branch_predict_taken.eq(m.sink.branch_predict_taken & m.valid),
         ]
 
         decoder = cpu.submodules.decoder = InstructionDecoder()
@@ -507,14 +507,14 @@ class Minerva:
 
         # A/F
         with cpu.If(~a.stall):
-            cpu.d.sync += a.source.pc.eq(ifu.a_pc)
+            cpu.d.sync += a.source.pc.eq(fetch.a_pc)
 
         # F/D
         with cpu.If(~f.stall):
             cpu.d.sync += [
                 f.source.pc.eq(f.sink.pc[:30]),
-                f.source.instruction.eq(ifu.f_instruction),
-                f.source.bus_error.eq(ifu.f_bus_error)
+                f.source.instruction.eq(fetch.f_instruction),
+                f.source.bus_error.eq(fetch.f_bus_error)
             ]
 
         # D/X
