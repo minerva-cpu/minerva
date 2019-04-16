@@ -1,3 +1,5 @@
+from .csr import *
+
 __all__ = [
     "Opcode", "Funct3", "Funct7", "Funct12", "CSRIndex", "CSRMode", "Cause",
     "flat_layout", "misa_layout", "mstatus_layout", "mtvec_layout", "mip_layout",
@@ -19,14 +21,14 @@ class Opcode:
 
 
 class Funct3:
-    BEQ  = B  = ADD  = FENCE  = PRIV   = 0b000
-    BNE  = H  = SLL  = FENCEI = CSRRW  = 0b001
-    _    = W  = SLT  = _      = CSRRS  = 0b010
-    _    = _  = SLTU = _      = CSRRC  = 0b011
-    BLT  = BU = XOR  = _      = _      = 0b100
-    BGE  = HU = SR   = _      = CSRRWI = 0b101
-    BLTU = _  = OR   = _      = CSRRSI = 0b110
-    BGEU = _  = AND  = _      = CSRRCI = 0b111
+    BEQ  = B  = ADD  = FENCE  = PRIV   = MUL    = 0b000
+    BNE  = H  = SLL  = FENCEI = CSRRW  = MULH   = 0b001
+    _    = W  = SLT  = _      = CSRRS  = MULHSU = 0b010
+    _    = _  = SLTU = _      = CSRRC  = MULHU  = 0b011
+    BLT  = BU = XOR  = _      = _      = DIV    = 0b100
+    BGE  = HU = SR   = _      = CSRRWI = DIVU   = 0b101
+    BLTU = _  = OR   = _      = CSRRSI = REM    = 0b110
+    BGEU = _  = AND  = _      = CSRRCI = REMU   = 0b111
 
 
 class Funct7:
@@ -61,7 +63,7 @@ class CSRIndex:
     # µarch specific
     IRQ_MASK    = 0x330
     IRQ_PENDING = 0x360
-    # debug mode
+    # debug module
     DCSR        = 0x7b0
     DPC         = 0x7b1
 
@@ -103,102 +105,102 @@ class Cause:
 # CSR layouts
 
 flat_layout = [
-    ("value", 32)
+    ("value", 32, CSRAccess.WARL)
 ]
 
 
 misa_layout = [
-    ("extensions", 26),
-    ("wiri0",       4),
-    ("mxl",         2)
+    ("extensions", 26, CSRAccess.WARL),
+    ("wiri0",       4, CSRAccess.WIRI),
+    ("mxl",         2, CSRAccess.WARL)
 ]
 
 
 mstatus_layout = [
-    ("uie",   1), # User Interrupt Enable
-    ("sie",   1), # Supervisor Interrupt Enable
-    ("wpri0", 1), # reserved
-    ("mie",   1), # Machine Interrupt Enable
-    ("upie",  1), # User Previous Interrupt Enable
-    ("spie",  1), # Supervisor Previous Interrupt Enable
-    ("wpri1", 1), # reserved
-    ("mpie",  1), # Machine Previous Interrupt Enable
-    ("spp",   1), # Supervisor Previous Privilege
-    ("wpri2", 2), # reserved
-    ("mpp",   2), # Machine Previous Privilege
-    ("fs",    2), # FPU Status
-    ("xs",    2), # user-mode eXtensions Status
-    ("mprv",  1), # Modify PRiVilege
-    ("sum",   1), # Supervisor User Memory access
-    ("mxr",   1), # Make eXecutable Readable
-    ("tvm",   1), # Trap Virtual Memory
-    ("tw",    1), # Timeout Wait
-    ("tsr",   1), # Trap SRET
-    ("wpri3", 8), # reserved
-    ("sd",    1)  # State Dirty (set if XS or FS are set to dirty)
+    ("uie",   1, CSRAccess.WARL), # User Interrupt Enable
+    ("sie",   1, CSRAccess.WARL), # Supervisor Interrupt Enable
+    ("wpri0", 1, CSRAccess.WPRI),
+    ("mie",   1, CSRAccess.WARL), # Machine Interrupt Enable
+    ("upie",  1, CSRAccess.WARL), # User Previous Interrupt Enable
+    ("spie",  1, CSRAccess.WARL), # Supervisor Previous Interrupt Enable
+    ("wpri1", 1, CSRAccess.WPRI),
+    ("mpie",  1, CSRAccess.WARL), # Machine Previous Interrupt Enable
+    ("spp",   1, CSRAccess.WARL), # Supervisor Previous Privilege
+    ("wpri2", 2, CSRAccess.WPRI),
+    ("mpp",   2, CSRAccess.WARL), # Machine Previous Privilege
+    ("fs",    2, CSRAccess.WARL), # FPU Status
+    ("xs",    2, CSRAccess.WARL), # user-mode eXtensions Status
+    ("mprv",  1, CSRAccess.WARL), # Modify PRiVilege
+    ("sum",   1, CSRAccess.WARL), # Supervisor User Memory access
+    ("mxr",   1, CSRAccess.WARL), # Make eXecutable Readable
+    ("tvm",   1, CSRAccess.WARL), # Trap Virtual Memory
+    ("tw",    1, CSRAccess.WARL), # Timeout Wait
+    ("tsr",   1, CSRAccess.WARL), # Trap SRET
+    ("wpri3", 8, CSRAccess.WPRI),
+    ("sd",    1, CSRAccess.WARL)  # State Dirty (set if XS or FS are set to dirty)
 ]
 
 
 mtvec_layout = [
-    ("mode",  2),
-    ("base", 30)
+    ("mode",  2, CSRAccess.WARL),
+    ("base", 30, CSRAccess.WARL)
 ]
 
 
 mip_layout = [
-    ("usip",   1),
-    ("ssip",   1),
-    ("wiri0",  1),
-    ("msip",   1),
-    ("utip",   1),
-    ("stip",   1),
-    ("wiri1",  1),
-    ("mtip",   1),
-    ("ueip",   1),
-    ("seip",   1),
-    ("wiri2",  1),
-    ("meip",   1),
-    ("wiri3", 20)
+    ("usip",   1, CSRAccess.WARL),
+    ("ssip",   1, CSRAccess.WARL),
+    ("wiri0",  1, CSRAccess.WIRI),
+    ("msip",   1, CSRAccess.WARL),
+    ("utip",   1, CSRAccess.WARL),
+    ("stip",   1, CSRAccess.WARL),
+    ("wiri1",  1, CSRAccess.WIRI),
+    ("mtip",   1, CSRAccess.WARL),
+    ("ueip",   1, CSRAccess.WARL),
+    ("seip",   1, CSRAccess.WARL),
+    ("wiri2",  1, CSRAccess.WIRI),
+    ("meip",   1, CSRAccess.WARL),
+    ("wiri3", 20, CSRAccess.WIRI)
 ]
 
 
 mie_layout = [
-    ("usie",   1),
-    ("ssie",   1),
-    ("wpri0",  1),
-    ("msie",   1),
-    ("utie",   1),
-    ("stie",   1),
-    ("wpri1",  1),
-    ("mtie",   1),
-    ("ueie",   1),
-    ("seie",   1),
-    ("wpri2",  1),
-    ("meie",   1),
-    ("wpri3", 20)
+    ("usie",   1, CSRAccess.WARL),
+    ("ssie",   1, CSRAccess.WARL),
+    ("wpri0",  1, CSRAccess.WPRI),
+    ("msie",   1, CSRAccess.WARL),
+    ("utie",   1, CSRAccess.WARL),
+    ("stie",   1, CSRAccess.WARL),
+    ("wpri1",  1, CSRAccess.WPRI),
+    ("mtie",   1, CSRAccess.WARL),
+    ("ueie",   1, CSRAccess.WARL),
+    ("seie",   1, CSRAccess.WARL),
+    ("wpri2",  1, CSRAccess.WPRI),
+    ("meie",   1, CSRAccess.WARL),
+    ("wpri3", 20, CSRAccess.WPRI)
 ]
 
 
 mcause_layout = [
-    ("ecode",    31),
-    ("interrupt", 1)
+    ("ecode",    31, CSRAccess.WARL),
+    ("interrupt", 1, CSRAccess.WARL)
 ]
 
 
 dcsr_layout = [
-    ("prv",        2), # Privilege level before Debug Mode was entered
-    ("step",       1), # Execute a single instruction and re-enter Debug Mode
-    ("nmip",       1), # A non-maskable interrupt is pending
-    ("mprven",     1), # Use mstatus.mprv in Debug Mode
-    ("zero0",      1),
-    ("cause",      3), # Explains why Debug Mode was entered
-    ("stoptime",   1), # Stop timer increment during Debug Mode
-    ("stopcount",  1), # Stop counter increment during Debug Mode
-    ("stepie",     1), # Enable interrupts during single stepping
-    ("ebreaku",    1), # EBREAKs in U-mode enter Debug Mode
-    ("ebreaks",    1), # EBREAKs in S-mode enter Debug Mode
-    ("zero1",      1),
-    ("ebreakm",    1), # EBREAKs in M-mode enter Debug Mode
-    ("zero2",     12),
-    ("xdebugver",  4)  # External Debug specification version
+    ("prv",        2, CSRAccess.WARL), # Privilege level before Debug Mode was entered
+    ("step",       1, CSRAccess.WARL), # Execute a single instruction and re-enter Debug Mode
+    ("nmip",       1, CSRAccess.WLRL), # A non-maskable interrupt is pending
+    ("mprven",     1, CSRAccess.WARL), # Use mstatus.mprv in Debug Mode
+    ("zero0",      1, CSRAccess.WPRI),
+    ("cause",      3, CSRAccess.WLRL), # Explains why Debug Mode was entered
+    ("stoptime",   1, CSRAccess.WARL), # Stop timer increment during Debug Mode
+    ("stopcount",  1, CSRAccess.WARL), # Stop counter increment during Debug Mode
+    ("stepie",     1, CSRAccess.WARL), # Enable interrupts during single stepping
+    ("ebreaku",    1, CSRAccess.WARL), # EBREAKs in U-mode enter Debug Mode
+    ("ebreaks",    1, CSRAccess.WARL), # EBREAKs in S-mode enter Debug Mode
+    ("zero1",      1, CSRAccess.WPRI),
+    ("ebreakm",    1, CSRAccess.WARL), # EBREAKs in M-mode enter Debug Mode
+    ("zero2",     12, CSRAccess.WPRI),
+    ("xdebugver",  4, CSRAccess.WLRL)  # External Debug specification version
 ]

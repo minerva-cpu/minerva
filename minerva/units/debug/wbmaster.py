@@ -27,14 +27,14 @@ class AccessSize:
 
 
 class DebugWishboneMaster:
-    def __init__(self, dmrf):
+    def __init__(self, debugrf):
         self.bus = Record(wishbone_layout)
 
-        self.sbbusy = Signal()
+        self.dbus_busy = Signal()
 
-        self.sbcs       = dmrf.reg_port(DebugReg.SBCS)
-        self.sbaddress0 = dmrf.reg_port(DebugReg.SBADDRESS0)
-        self.sbdata0    = dmrf.reg_port(DebugReg.SBDATA0)
+        self.sbcs       = debugrf.reg_port(DebugReg.SBCS)
+        self.sbaddress0 = debugrf.reg_port(DebugReg.SBADDRESS0)
+        self.sbdata0    = debugrf.reg_port(DebugReg.SBDATA0)
 
     def elaborate(self, platform):
         m = Module()
@@ -47,7 +47,7 @@ class DebugWishboneMaster:
 
         sbbusyerror = self.sbcs.w.sbbusyerror
         sberror = self.sbcs.w.sberror
-        m.d.comb += self.sbbusy.eq(self.sbcs.w.sbbusy)
+        m.d.comb += self.dbus_busy.eq(self.sbcs.w.sbbusy)
 
         m.d.comb += [
             self.sbcs.w.sbaccess8.eq(1),

@@ -1,4 +1,5 @@
-from operator import and_
+from functools import reduce
+from operator import or_
 
 from nmigen import *
 from nmigen.lib.coding import Encoder
@@ -62,11 +63,12 @@ class L1Cache:
         self.refill_valid = Signal()
         self.refill_data = Signal(32)
         self.last_refill = Signal()
-        self.flush = Signal()
 
         self.stall_request = Signal()
         self.refill_request = Signal()
         self.s2_dat_r = Signal(32)
+
+        self._flush_sources = []
 
     @property
     def offsetbits(self):
@@ -81,6 +83,9 @@ class L1Cache:
         wordbits = log2_int(32//8)
         addressbits = log2_int(self.limit - self.base)
         return addressbits - (wordbits + self.offsetbits + self.linebits)
+
+    def flush_on(self, cond):
+        self._flush_sources.append(cond)
 
     def elaborate(self, platform):
         m = Module()
@@ -108,6 +113,9 @@ class L1Cache:
             with m.If(self.refill_request):
                 m.d.sync += refill_lru.eq(~refill_lru)
         m.d.comb += ways[refill_lru].enable.eq(1)
+
+        flush = Signal()
+        m.d.comb += flush.eq(reduce(or_, self._flush_sources, 0))
 
         flushing = Signal()
         flush_line = Signal(self.linebits, reset=2**self.linebits-1)
@@ -143,7 +151,7 @@ class L1Cache:
 
             with m.State("CHECK"):
                 m.d.comb += s2_dat_r.eq(ways[way_sel.o].data)
-                with m.If(self.flush):
+                with m.If(flush):
                     m.next = "FLUSH"
                 with m.Elif(miss):
                     m.d.comb += refill_stall.eq(1)

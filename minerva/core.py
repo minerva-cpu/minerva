@@ -7,15 +7,17 @@ from nmigen.lib.coding import PriorityEncoder
 
 from .isa import *
 from .stage import *
+from .gpr import *
+from .csr import *
 
 from .units.adder import *
 from .units.compare import *
 from .units.debug import *
 from .units.decoder import *
+from .units.exception import *
 from .units.fetch import *
 from .units.loadstore import *
 from .units.logic import *
-from .units.regfile import *
 from .units.predict import *
 from .units.shifter import *
 
@@ -27,19 +29,22 @@ __all__ = ["Minerva"]
 
 
 _af_layout = [
-    ("pc", (31, True))
+    ("pc",      (31, True)),
+    ("misaligned_fetch", 1)
 ]
 
 
 _fd_layout = [
-    ("pc",          30),
-    ("instruction", 32),
-    ("bus_error",    1)
+    ("pc",               30),
+    ("misaligned_fetch",  1),
+    ("instruction",      32),
+    ("bus_error",         1)
 ]
 
 
 _dx_layout = [
     ("pc",                  30),
+    ("misaligned_fetch",     1),
     ("rd",                   5),
     ("rs1",                  5),
     ("rd_we",                1),
@@ -91,13 +96,8 @@ _xm_layout = [
     ("branch_target",       32),
     ("branch_taken",         1),
     ("branch_predict_taken", 1),
-    ("csr_adr",             12),
-    ("csr_we",               1),
-    ("csr_result",          32),
     ("mret",                 1),
-    ("exception",            1),
-    ("mcause",   mcause_layout),
-    ("mepc",       flat_layout)
+    ("exception",            1)
 ]
 
 
@@ -109,13 +109,7 @@ _mw_layout = [
     ("load",               1),
     ("load_mask",          3),
     ("load_data",         32),
-    ("exception",          1),
-    ("csr_adr",           12),
-    ("csr_we",             1),
-    ("csr_result",        32),
-    ("mret",               1),
-    ("mcause", mcause_layout),
-    ("mepc",     flat_layout)
+    ("exception",          1)
 ]
 
 
@@ -132,24 +126,39 @@ class Minerva:
         self.timer_interrupt = Signal()
         self.ibus = Record(wishbone_layout)
         self.dbus = Record(wishbone_layout)
+
         if with_debug:
             self.jtag = Record(jtag_layout)
 
-        # TODO Figure out a better way to pass parameters.
+        ###
+
         self.reset_address = reset_address
-        self.with_icache = with_icache
-        self.icache_nb_ways = icache_nb_ways
-        self.icache_nb_lines = icache_nb_lines
-        self.icache_nb_words = icache_nb_words
-        self.icache_base = icache_base
-        self.icache_limit = icache_limit
-        self.with_dcache = with_dcache
-        self.dcache_nb_ways = dcache_nb_ways
-        self.dcache_nb_lines = dcache_nb_lines
-        self.dcache_nb_words = dcache_nb_words
-        self.dcache_base = dcache_base
-        self.dcache_limit = dcache_limit
-        self.with_debug = with_debug
+        self.with_icache   = with_icache
+        self.with_dcache   = with_dcache
+        self.with_debug    = with_debug
+
+        icache_args = icache_nb_ways, icache_nb_lines, icache_nb_words, icache_base, icache_limit
+        if with_icache:
+            self.fetch = CachedFetchUnit(*icache_args)
+        else:
+            self.fetch = SimpleFetchUnit()
+
+        dcache_args = dcache_nb_ways, dcache_nb_lines, dcache_nb_words, dcache_base, dcache_limit
+        if with_dcache:
+            self.lsu = CachedLoadStoreUnit(*dcache_args)
+        else:
+            self.lsu = SimpleLoadStoreUnit()
+
+        if with_debug:
+            self.debug = DebugUnit()
+
+        self.adder      = Adder()
+        self.compare    = CompareUnit()
+        self.decoder    = InstructionDecoder()
+        self.exception  = ExceptionUnit()
+        self.logic      = LogicUnit()
+        self.predict    = BranchPredictor()
+        self.shifter    = Shifter()
 
     def elaborate(self, platform):
         cpu = Module()
@@ -170,66 +179,77 @@ class Minerva:
             cpu.d.comb += s1.source.connect(s2.sink)
 
         a.source.pc.reset = self.reset_address//4 - 1
-        cpu.d.comb += a.valid.eq(1)
+        cpu.d.comb += a.valid.eq(Const(1))
+
+        # register files
+
+        gprf = cpu.submodules.gprf = GPRFile()
+        gprf_rp1 = gprf.read_port()
+        gprf_rp2 = gprf.read_port()
+        gprf_wp = gprf.write_port()
+
+        csrf = cpu.submodules.csrf = CSRFile(cpu)
+        csrf_rp = csrf.read_port()
+        csrf_wp = csrf.write_port()
 
         # units
 
-        if self.with_icache:
-            fetch = cpu.submodules.fetch = CachedFetchUnit(
-                    self.icache_nb_ways, self.icache_nb_lines, self.icache_nb_words,
-                    self.icache_base, self.icache_limit)
-            cpu.d.comb += [
-                fetch.f_stall.eq(f.stall),
-                fetch.f_valid.eq(f.valid),
-                fetch.icache.flush.eq(x.sink.fence_i & x.valid)
-            ]
-            if self.with_dcache:
-                dcache_stall_request = Signal()
-                cpu.d.comb += fetch.icache.refill_ready.eq(~dcache_stall_request)
-            else:
-                cpu.d.comb += fetch.icache.refill_ready.eq(1)
-
-            x.stall_on(fetch.icache.stall_request)
-            m.stall_on(fetch.icache.stall_request \
-                    & (fetch.m_branch_predict_taken != fetch.m_branch_taken))
-            m.stall_on(self.ibus.cyc & fetch.m_branch_taken)
-        else:
-            fetch = cpu.submodules.fetch = SimpleFetchUnit()
-            m.stall_on(self.ibus.cyc)
-
-        d_branch_predict_taken = Signal()
-        d_branch_target = Signal(32)
+        adder      = cpu.submodules.adder      = self.adder
+        compare    = cpu.submodules.compare    = self.compare
+        decoder    = cpu.submodules.decoder    = self.decoder
+        exception  = cpu.submodules.exception  = self.exception
+        fetch      = cpu.submodules.fetch      = self.fetch
+        lsu        = cpu.submodules.lsu        = self.lsu
+        logic      = cpu.submodules.logic      = self.logic
+        predict    = cpu.submodules.predict    = self.predict
+        shifter    = cpu.submodules.shifter    = self.shifter
 
         cpu.d.comb += [
             fetch.ibus.connect(self.ibus),
             fetch.a_stall.eq(a.stall),
             fetch.f_pc.eq(f.sink.pc[:30]),
-            fetch.d_branch_predict_taken.eq(d_branch_predict_taken & d.valid),
-            fetch.d_branch_target.eq(d_branch_target[2:]),
-            fetch.x_pc.eq(x.sink.pc[:30]),
-            fetch.m_branch_taken.eq(m.sink.branch_taken & m.valid),
-            fetch.m_branch_target.eq(m.sink.branch_target[2:]),
-            fetch.m_branch_predict_taken.eq(m.sink.branch_predict_taken & m.valid),
+            fetch.d_branch_predict_taken.eq(predict.d_branch_taken),
+            fetch.d_branch_target.eq(predict.d_branch_target),
+            fetch.d_valid.eq(d.valid),
+            fetch.x_pc.eq(x.sink.pc),
+            fetch.m_branch_predict_taken.eq(m.sink.branch_predict_taken),
+            fetch.m_branch_taken.eq(m.sink.branch_taken | m.sink.exception | m.sink.mret),
+            fetch.m_valid.eq(m.valid)
         ]
 
-        decoder = cpu.submodules.decoder = InstructionDecoder()
-        cpu.d.comb += decoder.instruction.eq(d.sink.instruction)
+        with cpu.If(m.sink.exception):
+            cpu.d.comb += fetch.m_branch_target.eq(exception.mtvec.r.base << 2)
+        with cpu.Elif(m.sink.mret):
+            cpu.d.comb += fetch.m_branch_target.eq(exception.mepc.r.value)
+        with cpu.Else():
+            cpu.d.comb += fetch.m_branch_target.eq(m.sink.branch_target)
 
-        d.kill_on(d.source.illegal & d.source.valid)
+        if self.with_icache:
+            cpu.d.comb += [
+                fetch.f_stall.eq(f.stall),
+                fetch.f_valid.eq(f.valid),
+                fetch.icache.refill_ready.eq(~lsu.dcache.stall_request if self.with_dcache else Const(1))
+            ]
 
-        gprf = cpu.submodules.gprf = GPRFile()
-        gprf_rp1 = gprf.read_port()
-        gprf_rp2 = gprf.read_port()
+            fetch.icache.flush_on(x.sink.fence_i & x.valid)
+
+            x.stall_on(fetch.icache.stall_request)
+            m.stall_on(fetch.icache.stall_request & (fetch.m_branch_predict_taken != fetch.m_branch_taken) & m.valid)
+            m.stall_on(self.ibus.cyc & fetch.m_branch_taken & m.valid)
+        else:
+            m.stall_on(self.ibus.cyc)
+
         cpu.d.comb += [
+            decoder.instruction.eq(d.sink.instruction),
             gprf_rp1.addr.eq(decoder.rs1),
-            gprf_rp2.addr.eq(decoder.rs2)
+            gprf_rp1.en.eq(d.valid),
+            gprf_rp2.addr.eq(decoder.rs2),
+            gprf_rp2.en.eq(d.valid),
+            csrf_rp.addr.eq(decoder.immediate),
+            csrf_rp.en.eq(d.valid)
         ]
 
-        csrf = cpu.submodules.csrf = CSRFile()
-        csrf_rp = csrf.read_port()
-        cpu.d.comb += csrf_rp.addr.eq(decoder.immediate[:12])
-
-        # csr set/clear instructions are translated to logic operations
+        # CSR set/clear instructions are translated to logic operations.
         x_csr_set_clear = x.sink.funct3[1]
         x_csr_clear = x_csr_set_clear & x.sink.funct3[0]
         x_csr_fmt_i = x.sink.funct3[2]
@@ -237,43 +257,70 @@ class Minerva:
         x_csr_src1 = Mux(x_csr_clear, ~x_csr_src1, x_csr_src1)
         x_csr_logic_op = x.sink.funct3 | 0b100
 
-        logic = cpu.submodules.logic = LogicUnit()
         cpu.d.comb += [
             logic.op.eq(Mux(x.sink.csr, x_csr_logic_op, x.sink.funct3)),
             logic.src1.eq(Mux(x.sink.csr, x_csr_src1, x.sink.src1)),
             logic.src2.eq(x.sink.src2)
         ]
 
-        adder = cpu.submodules.adder = Adder()
         cpu.d.comb += [
             adder.sub.eq(x.sink.adder_sub),
             adder.src1.eq(x.sink.src1),
             adder.src2.eq(Mux(x.sink.store, x.sink.immediate, x.sink.src2))
         ]
 
-        compare = cpu.submodules.compare = CompareUnit()
         cpu.d.comb += [
-            # share condition signal between compare and branch instructions
-            compare.condition.eq(Mux(x.sink.compare, x.sink.funct3 << 1, x.sink.funct3)),
+            shifter.x_direction.eq(x.sink.direction),
+            shifter.x_sext.eq(x.sink.sext),
+            shifter.x_shamt.eq(x.sink.src2),
+            shifter.x_src1.eq(x.sink.src1),
+            shifter.x_stall.eq(x.stall)
+        ]
+
+        cpu.d.comb += [
+            # compare.op is shared by compare and branch instructions.
+            compare.op.eq(Mux(x.sink.compare, x.sink.funct3 << 1, x.sink.funct3)),
             compare.zero.eq(x.sink.src1 == x.sink.src2),
             compare.negative.eq(adder.result[-1]),
             compare.overflow.eq(adder.overflow),
             compare.carry.eq(adder.carry)
         ]
 
-        shifter = cpu.submodules.shifter = Shifter()
         cpu.d.comb += [
-            shifter.x_direction.eq(x.sink.direction),
-            shifter.x_sext.eq(x.sink.sext),
-            shifter.x_shamt.eq(x.sink.src2[:5]),
-            shifter.x_src1.eq(x.sink.src1),
-            shifter.x_stall.eq(x.stall)
+            exception.external_interrupt.eq(self.external_interrupt),
+            exception.timer_interrupt.eq(self.timer_interrupt),
+            exception.x_pc.eq(x.sink.pc),
+            exception.x_ecall.eq(x.sink.ecall),
+            exception.x_misaligned_fetch.eq(x.sink.misaligned_fetch),
+            exception.x_bus_error.eq(x.sink.bus_error),
+            exception.x_illegal.eq(x.sink.illegal),
+            exception.x_mret.eq(x.sink.mret),
+            exception.x_stall.eq(x.sink.stall),
+            exception.x_valid.eq(x.valid)
+        ]
+
+        x_ebreak = x.sink.ebreak
+        if self.with_debug:
+            # If dcsr.ebreakm is set, EBREAK instructions enter Debug Mode.
+            # We do not want to raise an exception in this case because Debug Mode
+            # should be invisible to software execution.
+            x_ebreak &= ~self.debug.dcsr_ebreakm
+        cpu.d.comb += exception.x_ebreak.eq(x_ebreak)
+
+        cpu.d.comb += [
+            lsu.x_address.eq(adder.result),
+            lsu.x_load.eq(x.sink.load),
+            lsu.x_store.eq(x.sink.store),
+            lsu.x_store_operand.eq(x.sink.src2),
+            lsu.x_mask.eq(x.sink.funct3),
+            lsu.x_stall.eq(x.stall),
+            lsu.x_valid.eq(x.valid & ~exception.x_raise),
+            lsu.w_address.eq(w.sink.result),
+            lsu.w_load_mask.eq(w.sink.load_mask),
+            lsu.w_load_data.eq(w.sink.load_data)
         ]
 
         if self.with_dcache:
-            lsu = cpu.submodules.lsu = CachedLoadStoreUnit(
-                    self.dcache_nb_ways, self.dcache_nb_lines, self.dcache_nb_words,
-                    self.dcache_base, self.dcache_limit)
             cpu.d.comb += [
                 lsu.m_address.eq(m.sink.result),
                 lsu.m_load.eq(m.sink.load),
@@ -281,7 +328,7 @@ class Minerva:
                 lsu.m_dbus_sel.eq(m.sink.dbus_sel),
                 lsu.m_store_data.eq(m.sink.store_data),
                 lsu.m_stall.eq(m.stall),
-                lsu.m_valid.eq(m.valid)
+                lsu.m_valid.eq(m.valid & ~m.sink.exception)
             ]
 
             x.stall_on((lsu.x_load | lsu.x_store) & ~lsu.x_dcache_select & lsu.x_valid \
@@ -291,27 +338,15 @@ class Minerva:
                     & lsu.wrbuf.readable)
             m.stall_on(lsu.m_store & lsu.m_dcache_select & lsu.m_valid & ~lsu.wrbuf.writable)
             m.stall_on(lsu.dcache.stall_request)
-
-            if self.with_icache:
-                cpu.d.comb += dcache_stall_request.eq(lsu.dcache.stall_request)
         else:
-            lsu = cpu.submodules.lsu = SimpleLoadStoreUnit()
             m.stall_on(self.dbus.cyc)
 
-        cpu.d.comb += [
-            lsu.x_address.eq(adder.result),
-            lsu.x_load.eq(x.sink.load),
-            lsu.x_store.eq(x.sink.store),
-            lsu.x_store_operand.eq(x.sink.src2),
-            lsu.x_mask.eq(x.sink.funct3),
-            lsu.x_stall.eq(x.stall),
-            lsu.x_valid.eq(x.valid),
-            lsu.w_address.eq(w.sink.result),
-            lsu.w_load_mask.eq(w.sink.load_mask),
-            lsu.w_load_data.eq(w.sink.load_data)
-        ]
-
-        if not self.with_debug:
+        if self.with_debug:
+            with cpu.If(self.debug.halt & self.debug.halted):
+                cpu.d.comb += self.debug.dbus.connect(self.dbus)
+            with cpu.Else():
+                cpu.d.comb += lsu.dbus.connect(self.dbus)
+        else:
             cpu.d.comb += lsu.dbus.connect(self.dbus)
 
         # RAW hazard management
@@ -323,30 +358,28 @@ class Minerva:
         m_raw_rs2 = Signal()
         w_raw_rs2 = Signal()
         x_raw_csr = Signal()
-        m_raw_csr = Signal()
-        w_raw_csr = Signal()
         x_lock = Signal()
         m_lock = Signal()
 
         cpu.d.comb += [
-            x_raw_rs1.eq((x.sink.rd == decoder.rs1) & x.sink.rd_we & x.valid),
-            m_raw_rs1.eq((m.sink.rd == decoder.rs1) & m.sink.rd_we & m.valid),
-            w_raw_rs1.eq((w.sink.rd == decoder.rs1) & w.sink.rd_we & w.valid),
+            x_raw_rs1.eq((x.sink.rd == decoder.rs1) & x.sink.rd_we & ~exception.x_raise),
+            m_raw_rs1.eq((m.sink.rd == decoder.rs1) & m.sink.rd_we),
+            w_raw_rs1.eq((w.sink.rd == decoder.rs1) & w.sink.rd_we),
 
-            x_raw_rs2.eq((x.sink.rd == decoder.rs2) & x.sink.rd_we & x.valid),
-            m_raw_rs2.eq((m.sink.rd == decoder.rs2) & m.sink.rd_we & m.valid),
-            w_raw_rs2.eq((w.sink.rd == decoder.rs2) & w.sink.rd_we & w.valid),
+            x_raw_rs2.eq((x.sink.rd == decoder.rs2) & x.sink.rd_we & ~exception.x_raise),
+            m_raw_rs2.eq((m.sink.rd == decoder.rs2) & m.sink.rd_we),
+            w_raw_rs2.eq((w.sink.rd == decoder.rs2) & w.sink.rd_we),
 
-            x_raw_csr.eq((x.sink.csr_adr == csrf_rp.addr) & x.sink.csr_we & x.valid),
-            m_raw_csr.eq((m.sink.csr_adr == csrf_rp.addr) & m.sink.csr_we & m.valid),
-            w_raw_csr.eq((w.sink.csr_adr == csrf_rp.addr) & w.sink.csr_we & w.valid),
+            x_raw_csr.eq((x.sink.csr_adr == csrf_rp.addr) & x.sink.csr_we & ~exception.x_raise),
 
             x_lock.eq(~x.sink.bypass_x & (decoder.rs1_re & x_raw_rs1 | decoder.rs2_re & x_raw_rs2)),
             m_lock.eq(~m.sink.bypass_m & (decoder.rs1_re & m_raw_rs1 | decoder.rs2_re & m_raw_rs2))
         ]
 
-        if not self.with_debug:
-            d.stall_on((x_lock | m_lock) & d.valid)
+        if self.with_debug:
+            d.stall_on((x_lock & x.valid | m_lock & m.valid) & d.valid & ~self.debug.dcsr_step)
+        else:
+            d.stall_on((x_lock & x.valid | m_lock & m.valid) & d.valid)
 
         # result selection
 
@@ -381,6 +414,19 @@ class Minerva:
         with cpu.Else():
             cpu.d.comb += x_csr_result.eq(x.sink.src1)
 
+        with cpu.If(~x.stall):
+            cpu.d.comb += [
+                csrf_wp.en.eq(x.sink.csr & x.sink.csr_we & x.valid & ~exception.x_raise),
+                csrf_wp.addr.eq(x.sink.csr_adr),
+                csrf_wp.data.eq(x_csr_result)
+            ]
+
+        cpu.d.comb += [
+            gprf_wp.en.eq((w.sink.rd != 0) & w.sink.rd_we & w.valid),
+            gprf_wp.addr.eq(w.sink.rd),
+            gprf_wp.data.eq(w_result)
+        ]
+
         # D stage operand selection
 
         d_src1 = Signal(32)
@@ -392,51 +438,35 @@ class Minerva:
             cpu.d.comb += d_src1.eq(d.sink.pc << 2)
         with cpu.Elif(decoder.rs1_re & (decoder.rs1 == 0)):
             cpu.d.comb += d_src1.eq(0)
-        with cpu.Elif(x_raw_rs1):
+        with cpu.Elif(x_raw_rs1 & x.valid):
             cpu.d.comb += d_src1.eq(x_result)
-        with cpu.Elif(m_raw_rs1):
+        with cpu.Elif(m_raw_rs1 & m.valid):
             cpu.d.comb += d_src1.eq(m_result)
-        with cpu.Elif(w_raw_rs1):
+        with cpu.Elif(w_raw_rs1 & w.valid):
             cpu.d.comb += d_src1.eq(w_result)
         with cpu.Else():
             cpu.d.comb += d_src1.eq(gprf_rp1.data)
 
         with cpu.If(decoder.csr):
-            with cpu.If(x_raw_csr):
+            with cpu.If(x_raw_csr & x.valid):
                 cpu.d.comb += d_src2.eq(x_csr_result)
-            with cpu.Elif(m_raw_csr):
-                cpu.d.comb += d_src2.eq(m.sink.csr_result)
-            with cpu.Elif(w_raw_csr):
-                cpu.d.comb += d_src2.eq(w.sink.csr_result)
             with cpu.Else():
                 cpu.d.comb += d_src2.eq(csrf_rp.data)
         with cpu.Elif(~decoder.rs2_re):
             cpu.d.comb += d_src2.eq(decoder.immediate)
         with cpu.Elif(decoder.rs2 == 0):
             cpu.d.comb += d_src2.eq(0)
-        with cpu.Elif(x_raw_rs2):
+        with cpu.Elif(x_raw_rs2 & x.valid):
             cpu.d.comb += d_src2.eq(x_result)
-        with cpu.Elif(m_raw_rs2):
+        with cpu.Elif(m_raw_rs2 & m.valid):
             cpu.d.comb += d_src2.eq(m_result)
-        with cpu.Elif(w_raw_rs2):
+        with cpu.Elif(w_raw_rs2 & w.valid):
             cpu.d.comb += d_src2.eq(w_result)
         with cpu.Else():
             cpu.d.comb += d_src2.eq(gprf_rp2.data)
 
-        # csr ports
-
-        mstatus     = csrf.csr_port(CSRIndex.MSTATUS)
-        mtvec       = csrf.csr_port(CSRIndex.MTVEC)
-        mcause      = csrf.csr_port(CSRIndex.MCAUSE)
-        mepc        = csrf.csr_port(CSRIndex.MEPC)
-        mip         = csrf.csr_port(CSRIndex.MIP)
-        mie         = csrf.csr_port(CSRIndex.MIE)
-        irq_pending = csrf.csr_port(CSRIndex.IRQ_PENDING)
-        irq_mask    = csrf.csr_port(CSRIndex.IRQ_MASK)
-
         # branch prediction
 
-        predict = cpu.submodules.predict = BranchPredictor()
         cpu.d.comb += [
             predict.d_branch.eq(decoder.branch),
             predict.d_jump.eq(decoder.jump),
@@ -446,71 +476,84 @@ class Minerva:
             predict.d_src1.eq(d_src1)
         ]
 
-        x_branch_taken = Signal()
-        cpu.d.comb += [
-            d_branch_predict_taken.eq(predict.d_branch_taken),
-            d_branch_target.eq(predict.d_branch_target),
-            x_branch_taken.eq(x.sink.jump | x.sink.branch & compare.condition_met)
-        ]
-
-        f.kill_on(x.sink.branch_predict_taken & x.valid)
+        f.kill_on(x.sink.branch_predict_taken & x.valid & ~exception.x_raise)
         for s in a, f:
-            s.kill_on(m.sink.branch_predict_taken & ~m.sink.branch_taken & m.valid)
+            s.kill_on(m.sink.branch_predict_taken & ~fetch.m_branch_taken & m.valid)
         for s in a, f, d:
-            s.kill_on(~m.sink.branch_predict_taken & m.sink.branch_taken & m.valid)
+            s.kill_on(~m.sink.branch_predict_taken & fetch.m_branch_taken & m.valid)
 
-        # exception & interrupt management
+        # debug unit
 
-        exception_pe = cpu.submodules.exception_pe = PriorityEncoder(16)
-        interrupt_pe = cpu.submodules.interrupt_pe = PriorityEncoder(16)
-        cpu.d.comb += [
-            exception_pe.i[Cause.FETCH_MISALIGNED].eq(x_branch_taken & (x.sink.branch_target[:2] != 0)),
-            exception_pe.i[Cause.FETCH_ACCESS_FAULT].eq(x.sink.bus_error),
-            exception_pe.i[Cause.ILLEGAL_INSTRUCTION].eq(x.sink.illegal),
-            exception_pe.i[Cause.BREAKPOINT].eq(x.sink.ebreak),
-            exception_pe.i[Cause.ECALL_FROM_M].eq(x.sink.ecall),
+        if self.with_debug:
+            debug = cpu.submodules.debug = self.debug
+            cpu.d.comb += [
+                debug.jtag.connect(self.jtag),
+                debug.x_pc.eq(x.sink.pc),
+                debug.x_ebreak.eq(x.sink.ebreak),
+                debug.x_stall.eq(x.stall),
+                debug.m_branch_taken.eq(fetch.m_branch_taken),
+                debug.m_branch_target.eq(fetch.m_branch_target),
+                debug.m_pc.eq(m.sink.pc),
+                debug.m_valid.eq(m.valid)
+            ]
 
-            interrupt_pe.i[Cause.M_SOFTWARE_INTERRUPT].eq(mip.dat_r.msip & mie.dat_r.msie),
-            interrupt_pe.i[Cause.M_TIMER_INTERRUPT].eq(mip.dat_r.mtip & mie.dat_r.mtie),
-            interrupt_pe.i[Cause.M_EXTERNAL_INTERRUPT].eq(mip.dat_r.meip & mie.dat_r.meie),
 
-            irq_pending.we.eq(1),
-            irq_pending.dat_w.value.eq(self.external_interrupt & irq_mask.dat_r.value),
+            csrf_debug_rp = csrf.read_port()
+            csrf_debug_wp = csrf.write_port()
+            cpu.d.comb += [
+                csrf_debug_rp.addr.eq(debug.csrf_addr),
+                csrf_debug_rp.en.eq(debug.csrf_re),
+                debug.csrf_dat_r.eq(csrf_debug_rp.data),
+                csrf_debug_wp.addr.eq(debug.csrf_addr),
+                csrf_debug_wp.en.eq(debug.csrf_we),
+                csrf_debug_wp.data.eq(debug.csrf_dat_w)
+            ]
 
-            mip.we.eq(1),
-            mip.dat_w.mtip.eq(self.timer_interrupt),
-            mip.dat_w.meip.eq(reduce(or_, irq_pending.dat_w.value)),
-        ]
+            gprf_debug_rp = gprf.read_port()
+            gprf_debug_wp = gprf.write_port()
+            cpu.d.comb += [
+                gprf_debug_rp.addr.eq(debug.gprf_addr),
+                gprf_debug_rp.en.eq(debug.gprf_re),
+                debug.gprf_dat_r.eq(gprf_debug_rp.data),
+                gprf_debug_wp.addr.eq(debug.gprf_addr),
+                gprf_debug_wp.en.eq(debug.gprf_we),
+                gprf_debug_wp.data.eq(debug.gprf_dat_w)
+            ]
 
-        x_exception = Signal()
-        cpu.d.comb += x_exception.eq(~exception_pe.n & x.valid | mstatus.dat_r.mie & ~interrupt_pe.n)
+            x.stall_on(debug.halt)
+            m.stall_on(debug.dcsr_step & m.valid & ~debug.halt)
+            for s in a, f, d, x:
+                s.kill_on(debug.killall)
 
-        x_mepc = Record(mepc.dat_r.layout)
-        with cpu.If(m.sink.csr_we & (m.sink.csr_adr == CSRIndex.MEPC)):
-            cpu.d.comb += x_mepc.eq(m.sink.csr_result)
-        with cpu.Elif(w.sink.csr_we & (w.sink.csr_adr == CSRIndex.MEPC)):
-            cpu.d.comb += x_mepc.eq(w.sink.csr_result)
-        with cpu.Else():
-            cpu.d.comb += x_mepc.eq(mepc.dat_r)
+            halted = x.stall & ~reduce(or_, (s.valid for s in (m, w)))
+            if self.with_dcache:
+                halted &= ~lsu.wrbuf.readable
+            cpu.d.sync += debug.halted.eq(halted)
 
-        x_mtvec = Record(mtvec.dat_r.layout)
-        with cpu.If(m.sink.csr_we & (m.sink.csr_adr == CSRIndex.MTVEC)):
-            cpu.d.comb += x_mtvec.eq(m.sink.csr_result)
-        with cpu.Elif(w.sink.csr_we & (w.sink.csr_adr == CSRIndex.MTVEC)):
-            cpu.d.comb += x_mtvec.eq(w.sink.csr_result)
-        with cpu.Else():
-            cpu.d.comb += x_mtvec.eq(mtvec.dat_r)
+            with cpu.If(debug.resumereq):
+                with cpu.If(~debug.dbus_busy):
+                    cpu.d.comb += debug.resumeack.eq(1)
+                    cpu.d.sync += a.source.pc.eq(debug.dpc_value[2:] - 1)
+
+            if self.with_icache:
+                fetch.icache.flush_on(debug.resumereq)
+            if self.with_dcache:
+                lsu.dcache.flush_on(debug.resumereq)
 
         # pipeline registers
 
         # A/F
         with cpu.If(~a.stall):
-            cpu.d.sync += a.source.pc.eq(fetch.a_pc)
+            cpu.d.sync += [
+                a.source.pc.eq(fetch.a_pc),
+                a.source.misaligned_fetch.eq(fetch.a_misaligned_fetch)
+            ]
 
         # F/D
         with cpu.If(~f.stall):
             cpu.d.sync += [
                 f.source.pc.eq(f.sink.pc[:30]),
+                f.source.misaligned_fetch.eq(f.sink.misaligned_fetch),
                 f.source.instruction.eq(fetch.f_instruction),
                 f.source.bus_error.eq(fetch.f_bus_error)
             ]
@@ -519,6 +562,7 @@ class Minerva:
         with cpu.If(~d.stall):
             cpu.d.sync += [
                 d.source.pc.eq(d.sink.pc),
+                d.source.misaligned_fetch.eq(d.sink.misaligned_fetch),
                 d.source.bus_error.eq(d.sink.bus_error),
                 d.source.rd.eq(decoder.rd),
                 d.source.rs1.eq(decoder.rs1),
@@ -540,7 +584,7 @@ class Minerva:
                 d.source.branch.eq(decoder.branch),
                 d.source.fence_i.eq(decoder.fence_i),
                 d.source.csr.eq(decoder.csr),
-                d.source.csr_adr.eq(decoder.immediate[:12]),
+                d.source.csr_adr.eq(decoder.immediate),
                 d.source.csr_we.eq(decoder.csr_we),
                 d.source.ecall.eq(decoder.ecall),
                 d.source.ebreak.eq(decoder.ebreak),
@@ -557,7 +601,7 @@ class Minerva:
             cpu.d.sync += [
                 x.source.pc.eq(x.sink.pc),
                 x.source.rd.eq(x.sink.rd),
-                x.source.rd_we.eq(x.sink.rd_we),
+                x.source.rd_we.eq(x.sink.rd_we & ~exception.x_raise),
                 x.source.bypass_m.eq(x.sink.bypass_m | x.sink.bypass_x),
                 x.source.load.eq(x.sink.load),
                 x.source.load_mask.eq(x.sink.funct3),
@@ -566,36 +610,14 @@ class Minerva:
                 x.source.store_data.eq(lsu.x_store_data),
                 x.source.compare.eq(x.sink.compare),
                 x.source.shift.eq(x.sink.shift),
-                x.source.csr_adr.eq(x.sink.csr_adr),
-                x.source.csr_we.eq(x.sink.csr & x.sink.csr_we),
-                x.source.csr_result.eq(x_csr_result),
-                x.source.exception.eq(x_exception),
+                x.source.exception.eq(exception.x_raise),
                 x.source.mret.eq(x.sink.mret),
                 x.source.condition_met.eq(compare.condition_met),
-                x.source.branch_taken.eq(x_branch_taken | x_exception | x.sink.mret),
-                x.source.branch_predict_taken.eq(x.sink.branch_predict_taken & ~x_exception),
-                x.source.mcause.interrupt.eq(mstatus.dat_r.mie & ~interrupt_pe.n),
-                x.source.mcause.ecode.eq(Mux(exception_pe.n, interrupt_pe.o, exception_pe.o)),
+                x.source.branch_taken.eq(x.sink.jump | x.sink.branch & compare.condition_met),
+                x.source.branch_target.eq(x.sink.branch_target),
+                x.source.branch_predict_taken.eq(x.sink.branch_predict_taken & ~exception.x_raise),
                 x.source.result.eq(x_result)
             ]
-
-            with cpu.If(x_exception):
-                cpu.d.sync += x.source.branch_target.eq(x_mtvec.base << 2)
-            with cpu.Elif(x.sink.mret):
-                cpu.d.sync += x.source.branch_target.eq(x_mepc.value)
-            with cpu.Else():
-                cpu.d.sync += x.source.branch_target.eq(x.sink.branch_target)
-
-            with cpu.If(x.sink.ecall | x.sink.ebreak | mstatus.dat_r.mie & ~interrupt_pe.n):
-                cpu.d.sync += [
-                    x.source.mepc.value.eq(x.sink.pc << 2),
-                    x.source.rd_we.eq(0)
-                ]
-            with cpu.Else():
-                cpu.d.sync += [
-                    x.source.mepc.value.eq(x.sink.pc + 1 << 2),
-                    x.source.rd_we.eq(x.sink.rd_we)
-                ]
 
         # M/W
         with cpu.If(~m.stall):
@@ -605,88 +627,9 @@ class Minerva:
                 m.source.load.eq(m.sink.load),
                 m.source.load_mask.eq(m.sink.load_mask),
                 m.source.load_data.eq(lsu.m_load_data),
-                m.source.csr_adr.eq(m.sink.csr_adr),
-                m.source.csr_we.eq(m.sink.csr_we),
-                m.source.csr_result.eq(m.sink.csr_result),
-                m.source.mret.eq(m.sink.mret),
-                m.source.exception.eq(m.sink.exception),
-                m.source.mcause.eq(m.sink.mcause),
-                m.source.mepc.eq(m.sink.mepc),
                 m.source.rd_we.eq(m.sink.rd_we),
-                m.source.result.eq(m_result)
+                m.source.result.eq(m_result),
+                m.source.exception.eq(m.sink.exception)
             ]
-
-        # W
-        gprf_wp = gprf.write_port()
-        csrf_wp = csrf.write_port()
-        cpu.d.comb += [
-            gprf_wp.en.eq((w.sink.rd != 0) & w.sink.rd_we & w.valid),
-            gprf_wp.addr.eq(w.sink.rd),
-            gprf_wp.data.eq(w_result),
-            csrf_wp.en.eq(w.sink.csr_we & w.valid),
-            csrf_wp.addr.eq(w.sink.csr_adr),
-            csrf_wp.data.eq(w.sink.csr_result),
-            mstatus.we.eq((w.sink.exception | w.sink.mret) & w.valid)
-        ]
-        with cpu.If(w.sink.exception):
-            cpu.d.comb += [
-                mstatus.dat_w.mpie.eq(mstatus.dat_r.mie),
-                mstatus.dat_w.mie.eq(0)
-            ]
-        with cpu.Elif(w.sink.mret):
-            cpu.d.comb += mstatus.dat_w.mie.eq(mstatus.dat_r.mpie)
-        cpu.d.comb += [
-            mcause.we.eq(w.sink.exception & w.valid),
-            mcause.dat_w.eq(w.sink.mcause),
-            mepc.we.eq(w.sink.exception & w.valid),
-            mepc.dat_w.eq(w.sink.mepc),
-        ]
-
-        # Debug port
-
-        if self.with_debug:
-            dcsr = csrf.csr_port(CSRIndex.DCSR)
-            dpc  = csrf.csr_port(CSRIndex.DPC)
-
-            m_breakpoint = Signal()
-            with cpu.If(~x.stall):
-                cpu.d.sync += m_breakpoint.eq(x.sink.ebreak & dcsr.dat_r.ebreakm)
-            with cpu.If(~m.stall & m_breakpoint):
-                cpu.d.sync += m.source.exception.eq(0)
-
-            debug = cpu.submodules.debug = DebugUnit(gprf, csrf)
-            cpu.d.comb += [
-                debug.jtag.connect(self.jtag),
-                debug.x_pc.eq(x.sink.pc),
-                debug.x_valid.eq(x.valid),
-                debug.m_branch_taken.eq(m.sink.branch_taken),
-                debug.m_branch_target.eq(m.sink.branch_target),
-                debug.m_breakpoint.eq(m_breakpoint),
-                debug.m_pc.eq(m.sink.pc),
-                debug.m_valid.eq(m.valid)
-            ]
-
-            x.stall_on(debug.halt)
-            m.stall_on(dcsr.dat_r.step & m.valid)
-            for s in a, f, d, x:
-                s.kill_on(debug.killall)
-
-            # The bypass interlock is disabled (and useless) during a single step.
-            d.stall_on((x_lock | m_lock) & d.valid & ~dcsr.dat_r.step)
-
-            halted = x.stall & ~reduce(or_, (s.valid for s in (m, w)))
-            if self.with_dcache:
-                halted = halted & ~lsu.wrbuf.readable
-            cpu.d.sync += debug.halted.eq(halted)
-
-            with cpu.If(debug.resumereq):
-                with cpu.If(~debug.sbbusy):
-                    cpu.d.comb += debug.resumeack.eq(1)
-                    cpu.d.sync += a.source.pc.eq(dpc.dat_r.value[2:] - 1)
-
-            with cpu.If(debug.halt):
-                cpu.d.comb += debug.dbus.connect(self.dbus)
-            with cpu.Else():
-                cpu.d.comb += lsu.dbus.connect(self.dbus)
 
         return cpu

@@ -1,49 +1,44 @@
 from nmigen import *
 from nmigen.lib.coding import PriorityEncoder
 
-from .dmi import *
-from ...isa import CSRIndex, dcsr_layout
+from ...csr import *
+from ...isa import *
 from ...wishbone import wishbone_layout
+from .dmi import DebugReg, Command, Error, Version, cmd_access_reg_layout
 
 
 __all__ = ["DebugController"]
 
 
 class HaltCause:
-    NONE          = 0
     EBREAK        = 1
-    TRIGGER       = 2
+    TRIGGER       = 0
     HALTREQ       = 3
     STEP          = 4
-    RESET_HALTREQ = 5
+    RESET_HALTREQ = 2
 
 
-class DebugController:
-    def __init__(self, dmrf):
-        self.gprf_addr = Signal(5)
-        self.gprf_we = Signal()
-        self.gprf_dat_w = Signal(32)
-        self.gprf_dat_r = Signal(32)
+cause_map = [2, 1, 5, 3, 4]
 
-        self.csrf_addr = Signal(12)
-        self.csrf_we = Signal()
-        self.csrf_dat_w = Signal(32)
-        self.csrf_dat_r = Signal(32)
 
-        self.dcsr_we = Signal()
-        self.dcsr_dat_w = Record(dcsr_layout)
-        self.dcsr_dat_r = Record(dcsr_layout)
+class DebugController(AutoCSR):
+    def __init__(self, debugrf):
+        self.dcsr = CSR(0x7b0, dcsr_layout, name="dcsr")
+        self.dpc  = CSR(0x7b1, flat_layout, name="dpc")
 
-        self.dpc_we = Signal()
-        self.dpc_dat_w = Signal(32)
-        self.dpc_dat_r = Signal(32)
+        self.dmstatus   = debugrf.reg_port(DebugReg.DMSTATUS)
+        self.dmcontrol  = debugrf.reg_port(DebugReg.DMCONTROL)
+        self.hartinfo   = debugrf.reg_port(DebugReg.HARTINFO)
+        self.abstractcs = debugrf.reg_port(DebugReg.ABSTRACTCS)
+        self.command    = debugrf.reg_port(DebugReg.COMMAND)
+        self.data0      = debugrf.reg_port(DebugReg.DATA0)
 
         self.x_pc = Signal(30)
-        self.x_valid = Signal()
+        self.x_ebreak = Signal()
+        self.x_stall = Signal()
 
         self.m_branch_taken = Signal()
         self.m_branch_target = Signal(32)
-        self.m_breakpoint = Signal()
         self.m_pc = Signal(30)
         self.m_valid = Signal()
 
@@ -53,15 +48,24 @@ class DebugController:
         self.resumereq = Signal()
         self.resumeack = Signal()
 
-        self.dmstatus   = dmrf.reg_port(DebugReg.DMSTATUS)
-        self.dmcontrol  = dmrf.reg_port(DebugReg.DMCONTROL)
-        self.hartinfo   = dmrf.reg_port(DebugReg.HARTINFO)
-        self.abstractcs = dmrf.reg_port(DebugReg.ABSTRACTCS)
-        self.command    = dmrf.reg_port(DebugReg.COMMAND)
-        self.data0      = dmrf.reg_port(DebugReg.DATA0)
+        self.gprf_addr = Signal(5)
+        self.gprf_re = Signal()
+        self.gprf_dat_r = Signal(32)
+        self.gprf_we = Signal()
+        self.gprf_dat_w = Signal(32)
+
+        self.csrf_addr = Signal(12)
+        self.csrf_re = Signal()
+        self.csrf_dat_r = Signal(32)
+        self.csrf_we = Signal()
+        self.csrf_dat_w = Signal(32)
 
     def elaborate(self, platform):
         m = Module()
+
+        for csr in self.dcsr, self.dpc:
+            with m.If(csr.we):
+                m.d.sync += csr.r.eq(csr.w)
 
         with m.If(self.dmcontrol.update):
             m.d.sync += [
@@ -83,30 +87,32 @@ class DebugController:
             self.resumereq.eq(self.dmcontrol.w.resumereq)
         ]
 
+        m_breakpoint = Signal()
+        with m.If(~self.x_stall):
+            m.d.comb += m_breakpoint.eq(self.x_ebreak & self.dcsr.r.ebreakm)
+
         halt_pe = m.submodules.halt_pe = PriorityEncoder(5)
         m.d.comb += [
-            halt_pe.i[HaltCause.EBREAK].eq(self.m_breakpoint & self.m_valid),
+            halt_pe.i[HaltCause.EBREAK].eq(m_breakpoint & self.m_valid),
             halt_pe.i[HaltCause.HALTREQ].eq(self.dmcontrol.r.haltreq),
-            halt_pe.i[HaltCause.STEP].eq(self.dcsr_dat_r.step & self.m_valid),
+            halt_pe.i[HaltCause.STEP].eq(self.dcsr.r.step & self.m_valid),
         ]
 
         with m.FSM():
             with m.State("RUN"):
                 m.d.comb += self.dmstatus.w.allrunning.eq(1)
                 with m.If(~halt_pe.n):
-                    m.d.comb += [
-                        self.dcsr_we.eq(1),
-                        self.dcsr_dat_w.cause.eq(halt_pe.o),
-                        self.dcsr_dat_w.stepie.eq(1),
-                        self.dpc_we.eq(1)
+                    m.d.sync += [
+                        self.halt.eq(1),
+                        self.dcsr.r.cause.eq(Array(cause_map)[halt_pe.o]),
+                        self.dcsr.r.stepie.eq(1)
                     ]
                     with m.If(halt_pe.o == HaltCause.EBREAK):
-                        m.d.comb += self.dpc_dat_w.eq(self.m_pc << 2)
+                        m.d.sync += self.dpc.r.eq(self.m_pc << 2)
                     with m.Elif(self.m_branch_taken & self.m_valid):
-                        m.d.comb += self.dpc_dat_w.eq(self.m_branch_target)
+                        m.d.sync += self.dpc.r.eq(self.m_branch_target)
                     with m.Else():
-                        m.d.comb += self.dpc_dat_w.eq(self.x_pc << 2)
-                    m.d.sync += self.halt.eq(1)
+                        m.d.sync += self.dpc.r.eq(self.x_pc << 2)
                     m.next = "HALTING"
 
             with m.State("HALTING"):
@@ -142,30 +148,32 @@ class DebugController:
 
             with m.State("COMMAND:ACCESS-REG"):
                 control = Record(cmd_access_reg_layout)
-                m.d.comb += [
-                    control.eq(self.command.r.control),
-                    self.csrf_addr.eq(control.regno),
-                    self.csrf_dat_w.eq(self.data0.r),
-                    self.gprf_addr.eq(control.regno),
-                    self.gprf_dat_w.eq(self.data0.r)
-                ]
+                m.d.comb += control.eq(self.command.r.control)
                 with m.If(control.postexec | (control.aarsize != 2) | control.aarpostincrement):
                     # Unsupported parameters.
                     m.d.sync += self.abstractcs.w.cmderr.eq(Error.EXCEPTION)
                 with m.Elif((control.regno >= 0x0000) & (control.regno < 0x1000)):
-                    # CSR access.
                     with m.If(control.transfer):
+                        m.d.comb += self.csrf_addr.eq(control.regno)
                         with m.If(control.write):
-                            m.d.comb += self.csrf_we.eq(1)
+                            m.d.comb += [
+                                self.csrf_we.eq(1),
+                                self.csrf_dat_w.eq(self.data0.r)
+                            ]
                         with m.Else():
+                            m.d.comb += self.csrf_re.eq(1)
                             m.d.sync += self.data0.w.eq(self.csrf_dat_r)
                     m.d.sync += self.abstractcs.w.cmderr.eq(Error.NONE)
                 with m.Elif((control.regno >= 0x1000) & (control.regno < 0x1020)):
-                    # GPR access.
                     with m.If(control.transfer):
+                        m.d.comb += self.gprf_addr.eq(control.regno)
                         with m.If(control.write):
-                            m.d.comb += self.gprf_we.eq(1)
+                            m.d.comb += [
+                                self.gprf_we.eq(1),
+                                self.gprf_dat_w.eq(self.data0.r)
+                            ]
                         with m.Else():
+                            m.d.comb += self.gprf_re.eq(1)
                             m.d.sync += self.data0.w.eq(self.gprf_dat_r)
                     m.d.sync += self.abstractcs.w.cmderr.eq(Error.NONE)
                 with m.Else():
