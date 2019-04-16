@@ -162,6 +162,7 @@ class CachedLoadStoreUnit(_LoadStoreUnitBase):
             dcache.s1_address.eq(self.x_address[2:]),
             dcache.s1_stall.eq(self.x_stall),
             dcache.s2_address.eq(self.m_address[2:]),
+            dcache.s2_stall.eq(self.m_stall),
             dcache.s2_re.eq(self.m_load & self.m_valid & self.m_dcache_select),
             dcache.s2_we.eq(self.m_store & self.m_valid & self.m_dcache_select),
             dcache.s2_sel.eq(Mux(self.m_dbus_sel == 0, 0b1111, self.m_dbus_sel)),
