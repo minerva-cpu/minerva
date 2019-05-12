@@ -4,7 +4,7 @@ from nmigen import *
 __all__ = ["Shifter"]
 
 
-class Shifter:
+class Shifter(Elaboratable):
     def __init__(self):
         self.x_direction = Signal()
         self.x_sext = Signal()

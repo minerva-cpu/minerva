@@ -120,7 +120,7 @@ _mw_layout = [
 ]
 
 
-class Minerva:
+class Minerva(Elaboratable):
     def __init__(self, reset_address=0x00000000,
                 with_icache=True,
                 icache_nb_ways=1, icache_nb_lines=512, icache_nb_words=8,

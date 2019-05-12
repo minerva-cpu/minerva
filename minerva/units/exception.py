@@ -8,7 +8,7 @@ from ..isa import *
 __all__ = ["ExceptionUnit"]
 
 
-class ExceptionUnit(AutoCSR):
+class ExceptionUnit(Elaboratable, AutoCSR):
     def __init__(self):
         self.mstatus     = CSR(0x300, mstatus_layout, name="mstatus")
         self.misa        = CSR(0x301, misa_layout, name="misa") # FIXME move elsewhere

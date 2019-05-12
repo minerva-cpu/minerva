@@ -12,7 +12,7 @@ from ..wishbone import Cycle, wishbone_layout
 __all__ = ["SimpleLoadStoreUnit", "CachedLoadStoreUnit"]
 
 
-class _LoadStoreUnitBase:
+class _LoadStoreUnitBase(Elaboratable):
     def __init__(self):
         self.dbus = Record(wishbone_layout)
 

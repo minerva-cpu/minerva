@@ -4,7 +4,7 @@ from nmigen import *
 __all__ = ["Adder"]
 
 
-class Adder:
+class Adder(Elaboratable):
     def __init__(self):
         self.sub = Signal()
         self.src1 = Signal(32)

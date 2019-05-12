@@ -32,7 +32,7 @@ reg_map = {
 }
 
 
-class DebugRegisterFile:
+class DebugRegisterFile(Elaboratable):
     def __init__(self, dmi):
         self.dmi = dmi
         self.ports = dict()

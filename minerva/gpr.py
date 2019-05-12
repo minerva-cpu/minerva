@@ -21,7 +21,7 @@ _gpr_names = [
 ]
 
 
-class GPRFile(RegisterFileBase):
+class GPRFile(RegisterFileBase, Elaboratable):
     def __init__(self):
         super().__init__(None, 32, 32)
 

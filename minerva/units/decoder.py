@@ -19,7 +19,7 @@ class Type:
     J = 5
 
 
-class InstructionDecoder:
+class InstructionDecoder(Elaboratable):
     def __init__(self, with_muldiv):
         self.with_muldiv = with_muldiv
 

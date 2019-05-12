@@ -4,7 +4,7 @@ from nmigen import *
 __all__ = ["BranchPredictor"]
 
 
-class BranchPredictor:
+class BranchPredictor(Elaboratable):
     def __init__(self):
         self.d_branch = Signal()
         self.d_jump = Signal()

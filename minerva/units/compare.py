@@ -6,7 +6,7 @@ from ..isa import Funct3
 __all__ = ["CompareUnit"]
 
 
-class CompareUnit:
+class CompareUnit(Elaboratable):
     def __init__(self):
         self.op = Signal(3)
         self.zero = Signal()

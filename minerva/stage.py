@@ -53,7 +53,7 @@ class _Endpoint(Record):
             return self.fields["payload"][name]
 
 
-class Stage:
+class Stage(Elaboratable):
     def __init__(self, sink_layout, source_layout):
         self.kill = Signal()
         self.stall = Signal()

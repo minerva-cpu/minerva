@@ -6,7 +6,7 @@ from ..isa import Funct3
 __all__ = ["Multiplier"]
 
 
-class Multiplier:
+class Multiplier(Elaboratable):
     def __init__(self):
         self.x_op     = Signal(3)
         self.x_src1   = Signal(32)

@@ -6,7 +6,7 @@ from ..isa import Funct3
 __all__ = ["LogicUnit"]
 
 
-class LogicUnit:
+class LogicUnit(Elaboratable):
     def __init__(self):
         self.op = Signal(3)
         self.src1 = Signal(32)

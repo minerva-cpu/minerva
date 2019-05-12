@@ -23,7 +23,7 @@ jtag_regs = {
 }
 
 
-class DebugUnit(AutoCSR):
+class DebugUnit(Elaboratable, AutoCSR):
     def __init__(self):
         self.jtag = Record(jtag_layout)
         self.dbus = Record(wishbone_layout)

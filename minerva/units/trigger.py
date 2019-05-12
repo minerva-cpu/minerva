@@ -39,7 +39,7 @@ mcontrol_layout = [
 ]
 
 
-class TriggerUnit(AutoCSR):
+class TriggerUnit(Elaboratable, AutoCSR):
     def __init__(self, nb_triggers):
         self.nb_triggers = nb_triggers
 

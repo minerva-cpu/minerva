@@ -7,7 +7,7 @@ from ..wishbone import Cycle, wishbone_layout
 __all__ = ["SimpleFetchUnit", "CachedFetchUnit"]
 
 
-class _FetchUnitBase:
+class _FetchUnitBase(Elaboratable):
     def __init__(self):
         self.ibus = Record(wishbone_layout)
 

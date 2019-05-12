@@ -26,7 +26,7 @@ class AccessSize:
     WORD = 2
 
 
-class DebugWishboneMaster:
+class DebugWishboneMaster(Elaboratable):
     def __init__(self, debugrf):
         self.bus = Record(wishbone_layout)
 

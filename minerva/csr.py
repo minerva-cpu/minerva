@@ -43,7 +43,7 @@ class AutoCSR:
         return csrs
 
 
-class CSRFile(RegisterFileBase):
+class CSRFile(Elaboratable, RegisterFileBase):
     def __init__(self, source, width=32, depth=2**12):
         super().__init__(source, width, depth)
 

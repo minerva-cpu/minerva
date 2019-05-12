@@ -21,7 +21,7 @@ class HaltCause:
 cause_map = [2, 1, 5, 3, 4]
 
 
-class DebugController(AutoCSR):
+class DebugController(Elaboratable, AutoCSR):
     def __init__(self, debugrf):
         self.dcsr = CSR(0x7b0, dcsr_layout, name="dcsr")
         self.dpc  = CSR(0x7b1, flat_layout, name="dpc")
