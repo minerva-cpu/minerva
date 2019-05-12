@@ -128,6 +128,7 @@ class Minerva:
                 with_dcache=True,
                 dcache_nb_ways=1, dcache_nb_lines=512, dcache_nb_words=8,
                 dcache_base=0, dcache_limit=2**31,
+                with_muldiv=True,
                 with_debug=False,
                 with_trigger=False, nb_triggers=8):
 
@@ -144,6 +145,7 @@ class Minerva:
         self.reset_address = reset_address
         self.with_icache   = with_icache
         self.with_dcache   = with_dcache
+        self.with_muldiv   = with_muldiv
         self.with_debug    = with_debug
         self.with_trigger  = with_trigger
 
@@ -167,11 +169,12 @@ class Minerva:
 
         self.adder      = Adder()
         self.compare    = CompareUnit()
-        self.decoder    = InstructionDecoder()
-        self.divider    = Divider()
+        self.decoder    = InstructionDecoder(self.with_muldiv)
+        if self.with_muldiv:
+            self.multiplier = Multiplier()
+            self.divider    = Divider()
         self.exception  = ExceptionUnit()
         self.logic      = LogicUnit()
-        self.multiplier = Multiplier()
         self.predict    = BranchPredictor()
         self.shifter    = Shifter()
 
@@ -212,12 +215,13 @@ class Minerva:
         adder      = cpu.submodules.adder      = self.adder
         compare    = cpu.submodules.compare    = self.compare
         decoder    = cpu.submodules.decoder    = self.decoder
-        divider    = cpu.submodules.divider    = self.divider
+        if self.with_muldiv:
+            multiplier = cpu.submodules.multiplier = self.multiplier
+            divider    = cpu.submodules.divider    = self.divider
         exception  = cpu.submodules.exception  = self.exception
         fetch      = cpu.submodules.fetch      = self.fetch
         loadstore  = cpu.submodules.loadstore  = self.loadstore
         logic      = cpu.submodules.logic      = self.logic
-        multiplier = cpu.submodules.multiplier = self.multiplier
         predict    = cpu.submodules.predict    = self.predict
         shifter    = cpu.submodules.shifter    = self.shifter
 
@@ -286,21 +290,22 @@ class Minerva:
             adder.src2.eq(Mux(x.sink.store, x.sink.immediate, x.sink.src2))
         ]
 
-        cpu.d.comb += [
-            multiplier.x_op.eq(x.sink.funct3),
-            multiplier.x_src1.eq(x.sink.src1),
-            multiplier.x_src2.eq(x.sink.src2),
-            multiplier.x_stall.eq(x.stall)
-        ]
+        if self.with_muldiv:
+            cpu.d.comb += [
+                multiplier.x_op.eq(x.sink.funct3),
+                multiplier.x_src1.eq(x.sink.src1),
+                multiplier.x_src2.eq(x.sink.src2),
+                multiplier.x_stall.eq(x.stall)
+            ]
 
-        cpu.d.comb += [
-            divider.x_op.eq(x.sink.funct3),
-            divider.x_src1.eq(x.sink.src1),
-            divider.x_src2.eq(x.sink.src2),
-            divider.x_valid.eq(x.sink.valid & ~exception.x_raise),
-            divider.x_stall.eq(x.stall)
-        ]
-        m.stall_on(divider.m_divide_ongoing)
+            cpu.d.comb += [
+                divider.x_op.eq(x.sink.funct3),
+                divider.x_src1.eq(x.sink.src1),
+                divider.x_src2.eq(x.sink.src2),
+                divider.x_valid.eq(x.sink.valid & ~exception.x_raise),
+                divider.x_stall.eq(x.stall)
+            ]
+            m.stall_on(divider.m_divide_ongoing)
 
         cpu.d.comb += [
             shifter.x_direction.eq(x.sink.direction),
@@ -434,10 +439,11 @@ class Minerva:
 
         with cpu.If(m.sink.compare):
             cpu.d.comb += m_result.eq(m.sink.condition_met)
-        with cpu.Elif(m.sink.multiply):
-            cpu.d.comb += m_result.eq(multiplier.m_result)
-        with cpu.Elif(m.sink.divide):
-            cpu.d.comb += m_result.eq(divider.m_result)
+        if self.with_muldiv:
+            with cpu.Elif(m.sink.multiply):
+                cpu.d.comb += m_result.eq(multiplier.m_result)
+            with cpu.Elif(m.sink.divide):
+                cpu.d.comb += m_result.eq(divider.m_result)
         with cpu.Elif(m.sink.shift):
             cpu.d.comb += m_result.eq(shifter.m_result)
         with cpu.Else():
@@ -627,8 +633,6 @@ class Minerva:
                 d.source.adder_sub.eq(decoder.adder_sub),
                 d.source.compare.eq(decoder.compare),
                 d.source.logic.eq(decoder.logic),
-                d.source.multiply.eq(decoder.multiply),
-                d.source.divide.eq(decoder.divide),
                 d.source.shift.eq(decoder.shift),
                 d.source.direction.eq(decoder.direction),
                 d.source.sext.eq(decoder.sext),
@@ -647,6 +651,11 @@ class Minerva:
                 d.source.branch_predict_taken.eq(predict.d_branch_taken),
                 d.source.branch_target.eq(predict.d_branch_target)
             ]
+            if self.with_muldiv:
+                cpu.d.sync += [
+                    d.source.multiply.eq(decoder.multiply),
+                    d.source.divide.eq(decoder.divide)
+                ]
 
         # X/M
         with cpu.If(~x.stall):
@@ -661,8 +670,6 @@ class Minerva:
                 x.source.dbus_sel.eq(loadstore.x_dbus_sel),
                 x.source.store_data.eq(loadstore.x_store_data),
                 x.source.compare.eq(x.sink.compare),
-                x.source.multiply.eq(x.sink.multiply),
-                x.source.divide.eq(x.sink.divide),
                 x.source.shift.eq(x.sink.shift),
                 x.source.exception.eq(exception.x_raise),
                 x.source.mret.eq(x.sink.mret),
@@ -672,6 +679,11 @@ class Minerva:
                 x.source.branch_predict_taken.eq(x.sink.branch_predict_taken & ~exception.x_raise),
                 x.source.result.eq(x_result)
             ]
+            if self.with_muldiv:
+                cpu.d.sync += [
+                    x.source.multiply.eq(x.sink.multiply),
+                    x.source.divide.eq(x.sink.divide)
+                ]
 
         # M/W
         with cpu.If(~m.stall):

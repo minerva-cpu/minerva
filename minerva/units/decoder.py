@@ -20,7 +20,9 @@ class Type:
 
 
 class InstructionDecoder:
-    def __init__(self):
+    def __init__(self, with_muldiv):
+        self.with_muldiv = with_muldiv
+
         self.instruction = Signal(32)
 
         self.rd = Signal(5)
@@ -175,21 +177,26 @@ class InstructionDecoder:
                 (Opcode.OP_32,     Funct3.OR,  0),    # or
                 (Opcode.OP_32,     Funct3.AND, 0)     # and
             ])),
+        ]
 
-            self.multiply.eq(matcher([
-                (Opcode.OP_32, Funct3.MUL,    Funct7.MULDIV), # mul
-                (Opcode.OP_32, Funct3.MULH,   Funct7.MULDIV), # mulh
-                (Opcode.OP_32, Funct3.MULHSU, Funct7.MULDIV), # mulhsu
-                (Opcode.OP_32, Funct3.MULHU,  Funct7.MULDIV), # mulhu
-            ])),
+        if self.with_muldiv:
+            m.d.comb += [
+                self.multiply.eq(matcher([
+                    (Opcode.OP_32, Funct3.MUL,    Funct7.MULDIV), # mul
+                    (Opcode.OP_32, Funct3.MULH,   Funct7.MULDIV), # mulh
+                    (Opcode.OP_32, Funct3.MULHSU, Funct7.MULDIV), # mulhsu
+                    (Opcode.OP_32, Funct3.MULHU,  Funct7.MULDIV), # mulhu
+                ])),
 
-            self.divide.eq(matcher([
-                (Opcode.OP_32, Funct3.DIV,  Funct7.MULDIV), # div
-                (Opcode.OP_32, Funct3.DIVU, Funct7.MULDIV), # divu
-                (Opcode.OP_32, Funct3.REM,  Funct7.MULDIV), # rem
-                (Opcode.OP_32, Funct3.REMU, Funct7.MULDIV)  # remu
-            ])),
+                self.divide.eq(matcher([
+                    (Opcode.OP_32, Funct3.DIV,  Funct7.MULDIV), # div
+                    (Opcode.OP_32, Funct3.DIVU, Funct7.MULDIV), # divu
+                    (Opcode.OP_32, Funct3.REM,  Funct7.MULDIV), # rem
+                    (Opcode.OP_32, Funct3.REMU, Funct7.MULDIV)  # remu
+                ])),
+            ]
 
+        m.d.comb += [
             self.shift.eq(matcher([
                 (Opcode.OP_IMM_32, Funct3.SLL, 0),          # slli
                 (Opcode.OP_IMM_32, Funct3.SR,  Funct7.SRL), # srli
