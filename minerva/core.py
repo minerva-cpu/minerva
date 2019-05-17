@@ -116,6 +116,7 @@ _mw_layout = [
     ("load",               1),
     ("load_mask",          3),
     ("load_data",         32),
+    ("multiply",           1),
     ("exception",          1)
 ]
 
@@ -295,7 +296,8 @@ class Minerva(Elaboratable):
                 multiplier.x_op.eq(x.sink.funct3),
                 multiplier.x_src1.eq(x.sink.src1),
                 multiplier.x_src2.eq(x.sink.src2),
-                multiplier.x_stall.eq(x.stall)
+                multiplier.x_stall.eq(x.stall),
+                multiplier.m_stall.eq(m.stall)
             ]
 
             cpu.d.comb += [
@@ -440,8 +442,6 @@ class Minerva(Elaboratable):
         with cpu.If(m.sink.compare):
             cpu.d.comb += m_result.eq(m.sink.condition_met)
         if self.with_muldiv:
-            with cpu.Elif(m.sink.multiply):
-                cpu.d.comb += m_result.eq(multiplier.m_result)
             with cpu.Elif(m.sink.divide):
                 cpu.d.comb += m_result.eq(divider.m_result)
         with cpu.Elif(m.sink.shift):
@@ -451,6 +451,9 @@ class Minerva(Elaboratable):
 
         with cpu.If(w.sink.load):
             cpu.d.comb += w_result.eq(loadstore.w_load_result)
+        if self.with_muldiv:
+            with cpu.Elif(w.sink.multiply):
+                cpu.d.comb += w_result.eq(multiplier.w_result)
         with cpu.Else():
             cpu.d.comb += w_result.eq(w.sink.result)
 
@@ -695,6 +698,7 @@ class Minerva(Elaboratable):
                 m.source.load_data.eq(loadstore.m_load_data),
                 m.source.rd_we.eq(m.sink.rd_we),
                 m.source.result.eq(m_result),
+                m.source.multiply.eq(m.sink.multiply),
                 m.source.exception.eq(m.sink.exception)
             ]
 

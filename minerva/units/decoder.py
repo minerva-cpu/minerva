@@ -249,7 +249,7 @@ class InstructionDecoder(Elaboratable):
             self.mret.eq(self.privileged & (funct12 == Funct12.MRET)),
 
             self.bypass_x.eq(self.adder | self.logic | self.lui | self.auipc | self.csr),
-            self.bypass_m.eq(self.compare | self.multiply | self.divide | self.shift),
+            self.bypass_m.eq(self.compare | self.divide | self.shift),
 
             self.illegal.eq((self.instruction[:2] != 0b11) | ~reduce(or_, (
                 self.compare, self.branch, self.adder, self.logic, self.multiply, self.divide, self.shift,
