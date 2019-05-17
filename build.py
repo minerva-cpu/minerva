@@ -19,6 +19,7 @@ def main():
         cpu.ibus.sel,
         cpu.ibus.stb,
         cpu.ibus.we,
+        cpu.ibus.err,
         cpu.dbus.ack,
         cpu.dbus.adr,
         cpu.dbus.bte,
@@ -28,7 +29,8 @@ def main():
         cpu.dbus.dat_w,
         cpu.dbus.sel,
         cpu.dbus.stb,
-        cpu.dbus.we
+        cpu.dbus.we,
+        cpu.dbus.err
     ]
     if cpu.with_debug:
         ports += [
