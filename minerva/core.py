@@ -275,15 +275,17 @@ class Minerva(Elaboratable):
             m.stall_on(self.ibus.cyc)
 
         cpu.d.comb += [
-            decoder.instruction.eq(d.sink.instruction),
-            csrf_rp.addr.eq(decoder.immediate),
-            csrf_rp.en.eq(d.valid)
+            decoder.instruction.eq(d.sink.instruction)
         ]
 
         cpu.d.comb += [
             gprf_rp1.addr.eq(fetch.f_instruction[15:20]),
             gprf_rp2.addr.eq(fetch.f_instruction[20:25])
         ]
+
+        with cpu.If(~f.stall):
+            cpu.d.sync += csrf_rp.addr.eq(fetch.f_instruction[20:32])
+        cpu.d.comb += csrf_rp.en.eq(decoder.csr & d.valid)
 
         # CSR set/clear instructions are translated to logic operations.
         x_csr_set_clear = x.sink.funct3[1]
@@ -426,7 +428,7 @@ class Minerva(Elaboratable):
             m_raw_rs2.eq((m.sink.rd == decoder.rs2) & m.sink.rd_we),
             w_raw_rs2.eq((w.sink.rd == decoder.rs2) & w.sink.rd_we),
 
-            x_raw_csr.eq((x.sink.csr_adr == csrf_rp.addr) & x.sink.csr_we),
+            x_raw_csr.eq((x.sink.csr_adr == decoder.immediate) & x.sink.csr_we),
 
             x_lock.eq(~x.sink.bypass_x & (decoder.rs1_re & x_raw_rs1 | decoder.rs2_re & x_raw_rs2)),
             m_lock.eq(~m.sink.bypass_m & (decoder.rs1_re & m_raw_rs1 | decoder.rs2_re & m_raw_rs2))
@@ -476,12 +478,11 @@ class Minerva(Elaboratable):
         with cpu.Else():
             cpu.d.comb += x_csr_result.eq(x.sink.src1)
 
-        with cpu.If(~x.stall):
-            cpu.d.comb += [
-                csrf_wp.en.eq(x.sink.csr & x.sink.csr_we & x.valid & ~exception.x_raise),
-                csrf_wp.addr.eq(x.sink.csr_adr),
-                csrf_wp.data.eq(x_csr_result)
-            ]
+        cpu.d.comb += [
+            csrf_wp.en.eq(x.sink.csr & x.sink.csr_we & x.valid & ~exception.x_raise & ~x.stall),
+            csrf_wp.addr.eq(x.sink.csr_adr),
+            csrf_wp.data.eq(x_csr_result)
+        ]
 
         cpu.d.comb += [
             gprf_wp.en.eq((w.sink.rd != 0) & w.sink.rd_we & w.valid),

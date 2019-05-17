@@ -61,7 +61,7 @@ class CSRFile(Elaboratable, RegisterFileBase):
                     m.d.comb += dat_r[name].eq(field)
                 else:
                     m.d.comb += dat_r[name].eq(Const(0))
-            m.d.comb += csr.re.eq(1)
+            m.d.comb += csr.re.eq(rp.en)
 
         def do_write(csr, wp):
             dat_w = Record(csr.layout)
@@ -72,20 +72,18 @@ class CSRFile(Elaboratable, RegisterFileBase):
                     m.d.comb += field.eq(dat_w[name])
                 else:
                     m.d.comb += field.eq(csr.r[name])
-            m.d.comb += csr.we.eq(1)
+            m.d.comb += csr.we.eq(wp.en)
 
         for rp in self._read_ports:
-            with m.If(rp.en):
-                with m.Switch(rp.addr):
-                    for addr, csr in self._register_map.items():
-                        with m.Case(addr):
-                            do_read(csr, rp)
+            with m.Switch(rp.addr):
+                for addr, csr in self._register_map.items():
+                    with m.Case(addr):
+                        do_read(csr, rp)
 
         for wp in self._write_ports:
-            with m.If(wp.en):
-                with m.Switch(wp.addr):
-                    for addr, csr in self._register_map.items():
-                        with m.Case(addr):
-                            do_write(csr, wp)
+            with m.Switch(wp.addr):
+                for addr, csr in self._register_map.items():
+                    with m.Case(addr):
+                        do_write(csr, wp)
 
         return m
