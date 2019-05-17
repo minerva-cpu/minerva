@@ -123,6 +123,7 @@ _mw_layout = [
 
 class Minerva(Elaboratable):
     def __init__(self, reset_address=0x00000000,
+                as_instance=False,
                 with_icache=True,
                 icache_nb_ways=1, icache_nb_lines=512, icache_nb_words=8,
                 icache_base=0, icache_limit=2**31,
@@ -138,12 +139,17 @@ class Minerva(Elaboratable):
         self.ibus = Record(wishbone_layout)
         self.dbus = Record(wishbone_layout)
 
+        if as_instance:
+            self.clk = Signal()
+            self.rst = Signal()
+
         if with_debug:
             self.jtag = Record(jtag_layout)
 
         ###
 
         self.reset_address = reset_address
+        self.as_instance   = as_instance
         self.with_icache   = with_icache
         self.with_dcache   = with_dcache
         self.with_muldiv   = with_muldiv
@@ -181,6 +187,13 @@ class Minerva(Elaboratable):
 
     def elaborate(self, platform):
         cpu = Module()
+
+        if self.as_instance:
+            cd_sync = cpu.domains.cd_sync = ClockDomain()
+            cpu.d.comb += [
+                cd_sync.clk.eq(self.clk),
+                cd_sync.rst.eq(self.rst)
+            ]
 
         # pipeline stages
 

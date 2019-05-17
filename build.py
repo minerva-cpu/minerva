@@ -4,8 +4,10 @@ from minerva.core import Minerva
 
 
 def main():
-    cpu = Minerva()
+    cpu = Minerva(as_instance=True, with_icache=False, with_dcache=False, with_muldiv=False)
     ports = [
+        cpu.clk,
+        cpu.rst,
         cpu.external_interrupt,
         cpu.ibus.ack,
         cpu.ibus.adr,
