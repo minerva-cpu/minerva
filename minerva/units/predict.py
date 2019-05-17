@@ -11,7 +11,6 @@ class BranchPredictor(Elaboratable):
         self.d_offset = Signal((32, True))
         self.d_pc = Signal(30)
         self.d_rs1_re = Signal()
-        self.d_src1 = Signal(32)
 
         self.d_branch_taken = Signal()
         self.d_branch_target = Signal(32)
@@ -24,15 +23,10 @@ class BranchPredictor(Elaboratable):
             # Forward conditional branches are predicted as not taken.
             m.d.comb += self.d_branch_taken.eq(self.d_offset[-1])
         with m.Else():
-            # Jumps are predicted as taken.
-            # Other branch types (ie. exceptions) are not predicted.
-            m.d.comb += self.d_branch_taken.eq(self.d_jump)
+            # Direct jumps are predicted as taken.
+            # Other branch types (ie. indirect jumps, exceptions) are not predicted.
+            m.d.comb += self.d_branch_taken.eq(self.d_jump & ~self.d_rs1_re)
 
-        with m.If(self.d_jump & self.d_rs1_re): # jalr
-            m.d.comb += self.d_branch_target.eq((self.d_src1 + self.d_offset)[1:] << 1)
-        with m.Else():
-            m.d.comb += self.d_branch_target.eq((self.d_pc << 2) + self.d_offset)
+        m.d.comb += self.d_branch_target.eq((self.d_pc << 2) + self.d_offset)
 
         return m
-
-

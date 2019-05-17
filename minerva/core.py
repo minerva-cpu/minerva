@@ -538,8 +538,7 @@ class Minerva(Elaboratable):
             predict.d_jump.eq(decoder.jump),
             predict.d_offset.eq(decoder.immediate),
             predict.d_pc.eq(d.sink.pc),
-            predict.d_rs1_re.eq(decoder.rs1_re),
-            predict.d_src1.eq(d_src1)
+            predict.d_rs1_re.eq(decoder.rs1_re)
         ]
 
         f.kill_on(x.sink.branch_predict_taken & x.valid & ~exception.x_raise)
@@ -696,7 +695,7 @@ class Minerva(Elaboratable):
                 x.source.mret.eq(x.sink.mret),
                 x.source.condition_met.eq(compare.condition_met),
                 x.source.branch_taken.eq(x.sink.jump | x.sink.branch & compare.condition_met),
-                x.source.branch_target.eq(x.sink.branch_target),
+                x.source.branch_target.eq(Mux(x.sink.jump & x.sink.rs1_re, adder.result[1:] << 1, x.sink.branch_target)),
                 x.source.branch_predict_taken.eq(x.sink.branch_predict_taken & ~exception.x_raise),
                 x.source.result.eq(x_result)
             ]
