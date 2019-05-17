@@ -144,6 +144,9 @@ class DebugController(Elaboratable, AutoCSR):
             with m.State("COMMAND:START"):
                 with m.Switch(self.command.r.cmdtype):
                     with m.Case(Command.ACCESS_REG):
+                        control = Record(cmd_access_reg_layout)
+                        m.d.comb += control.eq(self.command.r.control)
+                        m.d.comb += self.gprf_addr.eq(control.regno)
                         m.next = "COMMAND:ACCESS-REG"
                     with m.Case():
                         m.d.sync += self.abstractcs.w.cmderr.eq(Error.UNSUPPORTED)
@@ -176,7 +179,6 @@ class DebugController(Elaboratable, AutoCSR):
                                 self.gprf_dat_w.eq(self.data0.r)
                             ]
                         with m.Else():
-                            m.d.comb += self.gprf_re.eq(1)
                             m.d.sync += self.data0.w.eq(self.gprf_dat_r)
                     m.d.sync += self.abstractcs.w.cmderr.eq(Error.NONE)
                 with m.Else():

@@ -278,10 +278,15 @@ class Minerva(Elaboratable):
             decoder.instruction.eq(d.sink.instruction)
         ]
 
-        cpu.d.comb += [
-            gprf_rp1.addr.eq(fetch.f_instruction[15:20]),
-            gprf_rp2.addr.eq(fetch.f_instruction[20:25])
-        ]
+        if self.with_debug:
+            with cpu.If(self.debug.halt & self.debug.halted):
+                cpu.d.comb += gprf_rp1.addr.eq(self.debug.gprf_addr)
+            with cpu.Else():
+                cpu.d.comb += gprf_rp1.addr.eq(fetch.f_instruction[15:20])
+            cpu.d.comb += self.debug.gprf_dat_r.eq(gprf_rp1.data)
+        else:
+            cpu.d.comb += gprf_rp1.addr.eq(fetch.f_instruction[15:20])
+        cpu.d.comb += gprf_rp2.addr.eq(fetch.f_instruction[20:25])
 
         with cpu.If(~f.stall):
             cpu.d.sync += csrf_rp.addr.eq(fetch.f_instruction[20:32])
@@ -484,11 +489,25 @@ class Minerva(Elaboratable):
             csrf_wp.data.eq(x_csr_result)
         ]
 
-        cpu.d.comb += [
-            gprf_wp.en.eq((w.sink.rd != 0) & w.sink.rd_we & w.valid),
-            gprf_wp.addr.eq(w.sink.rd),
-            gprf_wp.data.eq(w_result)
-        ]
+        if self.with_debug:
+            with cpu.If(self.debug.halt & self.debug.halted):
+                cpu.d.comb += [
+                    gprf_wp.addr.eq(self.debug.gprf_addr),
+                    gprf_wp.en.eq(self.debug.gprf_we),
+                    gprf_wp.data.eq(self.debug.gprf_dat_w)
+                ]
+            with cpu.Else():
+                cpu.d.comb += [
+                    gprf_wp.en.eq((w.sink.rd != 0) & w.sink.rd_we & w.valid),
+                    gprf_wp.addr.eq(w.sink.rd),
+                    gprf_wp.data.eq(w_result)
+                ]
+        else:
+            cpu.d.comb += [
+                gprf_wp.en.eq((w.sink.rd != 0) & w.sink.rd_we & w.valid),
+                gprf_wp.addr.eq(w.sink.rd),
+                gprf_wp.data.eq(w_result)
+            ]
 
         # D stage operand selection
 
@@ -577,17 +596,6 @@ class Minerva(Elaboratable):
                 csrf_debug_wp.addr.eq(debug.csrf_addr),
                 csrf_debug_wp.en.eq(debug.csrf_we),
                 csrf_debug_wp.data.eq(debug.csrf_dat_w)
-            ]
-
-            gprf_debug_rp = gprf.read_port()
-            gprf_debug_wp = gprf.write_port()
-            cpu.d.comb += [
-                gprf_debug_rp.addr.eq(debug.gprf_addr),
-                gprf_debug_rp.en.eq(debug.gprf_re),
-                debug.gprf_dat_r.eq(gprf_debug_rp.data),
-                gprf_debug_wp.addr.eq(debug.gprf_addr),
-                gprf_debug_wp.en.eq(debug.gprf_we),
-                gprf_debug_wp.data.eq(debug.gprf_dat_w)
             ]
 
             x.stall_on(debug.halt)
