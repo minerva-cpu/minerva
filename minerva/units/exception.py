@@ -14,6 +14,7 @@ class ExceptionUnit(Elaboratable, AutoCSR):
         self.misa        = CSR(0x301, misa_layout, name="misa") # FIXME move elsewhere
         self.mie         = CSR(0x304, mie_layout, name="mie")
         self.mtvec       = CSR(0x305, mtvec_layout, name="mtvec")
+        self.mscratch    = CSR(0x340, flat_layout, name="mscratch") # FIXME move elsewhere
         self.mepc        = CSR(0x341, flat_layout, name="mepc")
         self.mcause      = CSR(0x342, mcause_layout, name="mcause")
         self.mip         = CSR(0x344, mip_layout, name="mip")
