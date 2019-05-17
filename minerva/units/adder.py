@@ -20,7 +20,7 @@ class Adder(Elaboratable):
         with m.If(self.sub):
             m.d.comb += [
                 Cat(self.result, self.carry).eq(self.src1 - self.src2),
-                self.overflow.eq(self.src1[-1] & ~self.src2[-1] & ~self.result[-1])
+                self.overflow.eq((self.src1[-1] != self.src2[-1]) & (self.result[-1] == self.src2[-1]))
             ]
         with m.Else():
             m.d.comb += [
