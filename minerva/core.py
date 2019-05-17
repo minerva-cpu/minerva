@@ -7,7 +7,6 @@ from nmigen.lib.coding import PriorityEncoder
 
 from .isa import *
 from .stage import *
-from .gpr import *
 from .csr import *
 
 from .units.adder import *
@@ -215,10 +214,11 @@ class Minerva(Elaboratable):
 
         # register files
 
-        gprf = cpu.submodules.gprf = GPRFile()
+        gprf = Memory(width=32, depth=32)
         gprf_rp1 = gprf.read_port()
         gprf_rp2 = gprf.read_port()
-        gprf_wp = gprf.write_port()
+        gprf_wp  = gprf.write_port()
+        cpu.submodules += gprf_rp1, gprf_rp2, gprf_wp
 
         csrf = cpu.submodules.csrf = CSRFile(cpu)
         csrf_rp = csrf.read_port()
@@ -243,6 +243,7 @@ class Minerva(Elaboratable):
             fetch.ibus.connect(self.ibus),
             fetch.a_stall.eq(a.stall),
             fetch.f_pc.eq(f.sink.pc[:30]),
+            fetch.f_stall.eq(f.stall),
             fetch.d_branch_predict_taken.eq(predict.d_branch_taken),
             fetch.d_branch_target.eq(predict.d_branch_target),
             fetch.d_valid.eq(d.valid),
@@ -261,7 +262,6 @@ class Minerva(Elaboratable):
 
         if self.with_icache:
             cpu.d.comb += [
-                fetch.f_stall.eq(f.stall),
                 fetch.f_valid.eq(f.valid),
                 fetch.icache.refill_ready.eq(~loadstore.dcache.stall_request if self.with_dcache else Const(1))
             ]
@@ -276,12 +276,13 @@ class Minerva(Elaboratable):
 
         cpu.d.comb += [
             decoder.instruction.eq(d.sink.instruction),
-            gprf_rp1.addr.eq(decoder.rs1),
-            gprf_rp1.en.eq(d.valid),
-            gprf_rp2.addr.eq(decoder.rs2),
-            gprf_rp2.en.eq(d.valid),
             csrf_rp.addr.eq(decoder.immediate),
             csrf_rp.en.eq(d.valid)
+        ]
+
+        cpu.d.comb += [
+            gprf_rp1.addr.eq(fetch.f_instruction[15:20]),
+            gprf_rp2.addr.eq(fetch.f_instruction[20:25])
         ]
 
         # CSR set/clear instructions are translated to logic operations.
@@ -417,15 +418,15 @@ class Minerva(Elaboratable):
         m_lock = Signal()
 
         cpu.d.comb += [
-            x_raw_rs1.eq((x.sink.rd == decoder.rs1) & x.sink.rd_we & ~exception.x_raise),
+            x_raw_rs1.eq((x.sink.rd == decoder.rs1) & x.sink.rd_we),
             m_raw_rs1.eq((m.sink.rd == decoder.rs1) & m.sink.rd_we),
             w_raw_rs1.eq((w.sink.rd == decoder.rs1) & w.sink.rd_we),
 
-            x_raw_rs2.eq((x.sink.rd == decoder.rs2) & x.sink.rd_we & ~exception.x_raise),
+            x_raw_rs2.eq((x.sink.rd == decoder.rs2) & x.sink.rd_we),
             m_raw_rs2.eq((m.sink.rd == decoder.rs2) & m.sink.rd_we),
             w_raw_rs2.eq((w.sink.rd == decoder.rs2) & w.sink.rd_we),
 
-            x_raw_csr.eq((x.sink.csr_adr == csrf_rp.addr) & x.sink.csr_we & ~exception.x_raise),
+            x_raw_csr.eq((x.sink.csr_adr == csrf_rp.addr) & x.sink.csr_we),
 
             x_lock.eq(~x.sink.bypass_x & (decoder.rs1_re & x_raw_rs1 | decoder.rs2_re & x_raw_rs2)),
             m_lock.eq(~m.sink.bypass_m & (decoder.rs1_re & m_raw_rs1 | decoder.rs2_re & m_raw_rs2))
@@ -493,6 +494,10 @@ class Minerva(Elaboratable):
         d_src1 = Signal(32)
         d_src2 = Signal(32)
 
+        w_valid_r = Signal()
+        with cpu.If(~m.stall):
+            cpu.d.sync += w_valid_r.eq(m.valid)
+
         with cpu.If(decoder.lui):
             cpu.d.comb += d_src1.eq(0)
         with cpu.Elif(decoder.auipc):
@@ -503,7 +508,7 @@ class Minerva(Elaboratable):
             cpu.d.comb += d_src1.eq(x_result)
         with cpu.Elif(m_raw_rs1 & m.valid):
             cpu.d.comb += d_src1.eq(m_result)
-        with cpu.Elif(w_raw_rs1 & w.valid):
+        with cpu.Elif(w_raw_rs1 & w_valid_r):
             cpu.d.comb += d_src1.eq(w_result)
         with cpu.Else():
             cpu.d.comb += d_src1.eq(gprf_rp1.data)
@@ -521,7 +526,7 @@ class Minerva(Elaboratable):
             cpu.d.comb += d_src2.eq(x_result)
         with cpu.Elif(m_raw_rs2 & m.valid):
             cpu.d.comb += d_src2.eq(m_result)
-        with cpu.Elif(w_raw_rs2 & w.valid):
+        with cpu.Elif(w_raw_rs2 & w_valid_r):
             cpu.d.comb += d_src2.eq(w_result)
         with cpu.Else():
             cpu.d.comb += d_src2.eq(gprf_rp2.data)
