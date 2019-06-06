@@ -49,7 +49,7 @@ class _Endpoint(Record):
     def __getattr__(self, name):
         try:
             return super().__getattr__(name)
-        except NameError:
+        except AttributeError:
             return self.fields["payload"][name]
 
 
