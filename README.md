@@ -72,8 +72,6 @@ The following parameters can be used to configure the Minerva core.
 
 In no particular order:
 
-* Debug port
-* Multiplication/division
 * RV64I
 * Floating Point Unit
 * Stateful branch prediction
