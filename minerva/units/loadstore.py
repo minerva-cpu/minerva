@@ -36,65 +36,46 @@ class _LoadStoreUnitBase(Elaboratable):
     def elaborate(self, platform):
         m = Module()
 
+        x_offset = Signal(2)
+        m.d.comb += x_offset.eq(self.x_address[:2])
+
         with m.Switch(self.x_mask[:2]):
             with m.Case(Funct3.B):
-                with m.Switch(self.x_address[:2]):
-                    with m.Case(0):
-                        m.d.comb += self.x_dbus_sel.eq(0b0001)
-                    with m.Case(1):
-                        m.d.comb += self.x_dbus_sel.eq(0b0010)
-                    with m.Case(2):
-                        m.d.comb += self.x_dbus_sel.eq(0b0100)
-                    with m.Case(3):
-                        m.d.comb += self.x_dbus_sel.eq(0b1000)
+                m.d.comb += [
+                    self.x_dbus_sel.eq(1 << x_offset),
+                    self.x_store_data.eq(self.x_store_operand[:8] << x_offset*8)
+                ]
             with m.Case(Funct3.H):
-                with m.If(~self.x_address[1]):
-                    m.d.comb += self.x_dbus_sel.eq(0b0011)
-                with m.Else():
-                    m.d.comb += self.x_dbus_sel.eq(0b1100)
+                m.d.comb += [
+                    self.x_dbus_sel.eq(3 << x_offset),
+                    self.x_store_data.eq(self.x_store_operand[:16] << x_offset*8)
+                ]
             with m.Case(Funct3.W):
-                m.d.comb += self.x_dbus_sel.eq(0b1111)
+                m.d.comb += [
+                    self.x_dbus_sel.eq(15),
+                    self.x_store_data.eq(self.x_store_operand)
+                ]
 
-        with m.Switch(self.x_mask):
-            with m.Case(Funct3.B):
-                m.d.comb += self.x_store_data.eq(Repl(self.x_store_operand[0: 8], 4))
-            with m.Case(Funct3.H):
-                m.d.comb += self.x_store_data.eq(Repl(self.x_store_operand[0:16], 2))
-            with m.Case(Funct3.W):
-                m.d.comb += self.x_store_data.eq(self.x_store_operand)
+        w_offset = Signal(2)
+        w_byte   = Signal((8, True))
+        w_half   = Signal((16, True))
+        m.d.comb += [
+            w_offset.eq(self.w_address[:2]),
+            w_byte.eq(self.w_load_data.part(w_offset*8, 8)),
+            w_half.eq(self.w_load_data.part(w_offset*8, 16))
+        ]
 
         with m.Switch(self.w_load_mask):
             with m.Case(Funct3.B):
-                with m.Switch(self.w_address[:2]):
-                    for i in range(4):
-                        with m.Case(i):
-                            byte = self.w_load_data[i*8:(i+1)*8]
-                            sext = Repl(self.w_load_data[(i+1)*8-1], 24)
-                            m.d.comb += self.w_load_result.eq(Cat(byte, sext))
+                m.d.comb += self.w_load_result.eq(w_byte)
             with m.Case(Funct3.BU):
-                with m.Switch(self.w_address[:2]):
-                    for i in range(4):
-                        with m.Case(i):
-                            byte = self.w_load_data[i*8:(i+1)*8]
-                            m.d.comb += self.w_load_result.eq(byte)
+                m.d.comb += self.w_load_result.eq(Cat(w_byte, 0))
             with m.Case(Funct3.H):
-                with m.If(~self.w_address[1]):
-                    half = self.w_load_data[0:16]
-                    sext = Repl(self.w_load_data[15], 16)
-                    m.d.comb += self.w_load_result.eq(Cat(half, sext))
-                with m.Else():
-                    half = self.w_load_data[16:32]
-                    sext = Repl(self.w_load_data[31], 16)
-                    m.d.comb += self.w_load_result.eq(Cat(half, sext))
+                m.d.comb += self.w_load_result.eq(w_half)
             with m.Case(Funct3.HU):
-                with m.If(~self.w_address[1]):
-                    half = self.w_load_data[0:16]
-                    m.d.comb += self.w_load_result.eq(half)
-                with m.Else():
-                    half = self.w_load_data[16:32]
-                    m.d.comb += self.w_load_result.eq(half)
+                m.d.comb += self.w_load_result.eq(Cat(w_half, 0))
             with m.Case(Funct3.W):
-                    m.d.comb += self.w_load_result.eq(self.w_load_data)
+                m.d.comb += self.w_load_result.eq(self.w_load_data)
 
         return m
 
