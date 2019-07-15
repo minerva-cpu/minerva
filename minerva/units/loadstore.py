@@ -27,6 +27,7 @@ class _LoadStoreUnitBase(Elaboratable):
         self.w_load_mask = Signal(3)
         self.w_load_data = Signal(32)
 
+        self.x_misaligned = Signal()
         self.x_dbus_sel = Signal(4)
         self.x_store_data = Signal(32)
         self.m_bus_error = Signal()
@@ -39,7 +40,13 @@ class _LoadStoreUnitBase(Elaboratable):
         x_offset = Signal(2)
         m.d.comb += x_offset.eq(self.x_address[:2])
 
-        with m.Switch(self.x_mask[:2]):
+        with m.Switch(self.x_mask):
+            with m.Case(Funct3.H, Funct3.HU):
+                m.d.comb += self.x_misaligned.eq(x_offset[0])
+            with m.Case(Funct3.W):
+                m.d.comb += self.x_misaligned.eq(x_offset.bool())
+
+        with m.Switch(self.x_mask):
             with m.Case(Funct3.B):
                 m.d.comb += [
                     self.x_dbus_sel.eq(1 << x_offset),
@@ -94,7 +101,7 @@ class SimpleLoadStoreUnit(_LoadStoreUnitBase):
                 ]
             m.d.sync += self.m_bus_error.eq(self.dbus.err)
         with m.Elif(self.x_valid & ~self.x_stall):
-            with m.If(self.x_store):
+            with m.If(self.x_store & ~self.x_misaligned):
                 m.d.sync += [
                     self.dbus.cyc.eq(1),
                     self.dbus.stb.eq(1),
@@ -103,7 +110,7 @@ class SimpleLoadStoreUnit(_LoadStoreUnitBase):
                     self.dbus.dat_w.eq(self.x_store_data),
                     self.dbus.sel.eq(self.x_dbus_sel)
                 ]
-            with m.Elif(self.x_load):
+            with m.Elif(self.x_load & ~self.x_misaligned):
                 m.d.sync += [
                     self.dbus.cyc.eq(1),
                     self.dbus.stb.eq(1),

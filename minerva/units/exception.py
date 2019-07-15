@@ -26,10 +26,13 @@ class ExceptionUnit(Elaboratable, AutoCSR):
         self.timer_interrupt = Signal()
         self.x_pc = Signal(32)
         self.x_instruction = Signal(32)
+        self.x_address = Signal(32)
         self.x_ebreak = Signal()
         self.x_ecall = Signal()
         self.x_misaligned_fetch = Signal()
         self.x_bus_error = Signal()
+        self.x_misaligned_load = Signal()
+        self.x_misaligned_store = Signal()
         self.x_illegal = Signal()
         self.x_mret = Signal()
         self.x_stall = Signal()
@@ -50,6 +53,8 @@ class ExceptionUnit(Elaboratable, AutoCSR):
             trap_pe.i[Cause.FETCH_ACCESS_FAULT ].eq(self.x_bus_error),
             trap_pe.i[Cause.ILLEGAL_INSTRUCTION].eq(self.x_illegal),
             trap_pe.i[Cause.BREAKPOINT         ].eq(self.x_ebreak),
+            trap_pe.i[Cause.LOAD_MISALIGNED    ].eq(self.x_misaligned_load),
+            trap_pe.i[Cause.STORE_MISALIGNED   ].eq(self.x_misaligned_store),
             trap_pe.i[Cause.ECALL_FROM_M       ].eq(self.x_ecall)
         ]
 
@@ -85,6 +90,8 @@ class ExceptionUnit(Elaboratable, AutoCSR):
                             m.d.sync += self.mtval.r.eq(self.x_pc)
                         with m.Case(Cause.ILLEGAL_INSTRUCTION):
                             m.d.sync += self.mtval.r.eq(self.x_instruction)
+                        with m.Case(Cause.LOAD_MISALIGNED, Cause.STORE_MISALIGNED):
+                            m.d.sync += self.mtval.r.eq(self.x_address)
                         with m.Case():
                             m.d.sync += self.mtval.r.eq(0)
                 with m.Else():

@@ -24,7 +24,7 @@ class _FetchUnitBase(Elaboratable):
         self.m_valid = Signal()
 
         self.a_pc = Signal(32)
-        self.a_misaligned_fetch = Signal()
+        self.a_misaligned = Signal()
         self.f_instruction = Signal(32)
         self.f_bus_error = Signal()
 
@@ -34,14 +34,14 @@ class _FetchUnitBase(Elaboratable):
         with m.If(self.d_branch_predict_taken & self.d_valid):
             m.d.comb += [
                 self.a_pc.eq(self.d_branch_target),
-                self.a_misaligned_fetch.eq(self.d_branch_target[:2].bool())
+                self.a_misaligned.eq(self.d_branch_target[:2].bool())
             ]
         with m.Elif(self.m_branch_predict_taken & ~self.m_branch_taken & self.m_valid):
             m.d.comb += self.a_pc.eq(self.x_pc)
         with m.Elif(~self.m_branch_predict_taken & self.m_branch_taken & self.m_valid):
             m.d.comb += [
                 self.a_pc.eq(self.m_branch_target),
-                self.a_misaligned_fetch.eq(self.m_branch_target[:2].bool())
+                self.a_misaligned.eq(self.m_branch_target[:2].bool())
             ]
         with m.Else():
             m.d.comb += self.a_pc.eq(self.f_pc + 4)

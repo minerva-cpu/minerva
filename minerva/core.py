@@ -353,10 +353,13 @@ class Minerva(Elaboratable):
             exception.timer_interrupt.eq(self.timer_interrupt),
             exception.x_pc.eq(x.sink.pc),
             exception.x_instruction.eq(x.sink.instruction),
+            exception.x_address.eq(loadstore.x_address),
             exception.x_ecall.eq(x.sink.ecall),
             exception.x_misaligned_fetch.eq(x.sink.misaligned_fetch),
             exception.x_bus_error.eq(x.sink.bus_error),
             exception.x_illegal.eq(x.sink.illegal),
+            exception.x_misaligned_load.eq(loadstore.x_load & loadstore.x_misaligned),
+            exception.x_misaligned_store.eq(loadstore.x_store & loadstore.x_misaligned),
             exception.x_mret.eq(x.sink.mret),
             exception.x_stall.eq(x.sink.stall),
             exception.x_valid.eq(x.valid)
@@ -633,7 +636,7 @@ class Minerva(Elaboratable):
         with cpu.If(~a.stall):
             cpu.d.sync += [
                 a.source.pc.eq(fetch.a_pc),
-                a.source.misaligned_fetch.eq(fetch.a_misaligned_fetch)
+                a.source.misaligned_fetch.eq(fetch.a_misaligned)
             ]
 
         # F/D
