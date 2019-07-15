@@ -12,18 +12,18 @@ class _FetchUnitBase(Elaboratable):
         self.ibus = Record(wishbone_layout)
 
         self.a_stall = Signal()
-        self.f_pc = Signal(30)
+        self.f_pc = Signal(32)
         self.f_stall = Signal()
         self.d_branch_predict_taken = Signal()
         self.d_branch_target = Signal(32)
         self.d_valid = Signal()
-        self.x_pc = Signal(30)
+        self.x_pc = Signal(32)
         self.m_branch_taken = Signal()
         self.m_branch_target = Signal(32)
         self.m_branch_predict_taken = Signal()
         self.m_valid = Signal()
 
-        self.a_pc = Signal(30)
+        self.a_pc = Signal(32)
         self.a_misaligned_fetch = Signal()
         self.f_instruction = Signal(32)
         self.f_bus_error = Signal()
@@ -33,18 +33,18 @@ class _FetchUnitBase(Elaboratable):
 
         with m.If(self.d_branch_predict_taken & self.d_valid):
             m.d.comb += [
-                self.a_pc.eq(self.d_branch_target[2:]),
+                self.a_pc.eq(self.d_branch_target),
                 self.a_misaligned_fetch.eq(self.d_branch_target[:2].bool())
             ]
         with m.Elif(self.m_branch_predict_taken & ~self.m_branch_taken & self.m_valid):
             m.d.comb += self.a_pc.eq(self.x_pc)
         with m.Elif(~self.m_branch_predict_taken & self.m_branch_taken & self.m_valid):
             m.d.comb += [
-                self.a_pc.eq(self.m_branch_target[2:]),
+                self.a_pc.eq(self.m_branch_target),
                 self.a_misaligned_fetch.eq(self.m_branch_target[:2].bool())
             ]
         with m.Else():
-            m.d.comb += self.a_pc.eq(self.f_pc + 1)
+            m.d.comb += self.a_pc.eq(self.f_pc + 4)
 
         return m
 
@@ -74,7 +74,7 @@ class SimpleFetchUnit(_FetchUnitBase):
                 ]
         with m.Elif(~self.a_stall):
             m.d.sync += [
-                self.ibus.adr.eq(self.a_pc),
+                self.ibus.adr.eq(self.a_pc[2:]),
                 self.ibus.cyc.eq(1),
                 self.ibus.stb.eq(1),
                 f_instruction_r.eq(f_instruction),
@@ -98,9 +98,9 @@ class CachedFetchUnit(_FetchUnitBase):
 
         icache = m.submodules.icache = self.icache
         m.d.comb += [
-            icache.s1_address.eq(self.a_pc),
+            icache.s1_address.eq(self.a_pc[2:]),
             icache.s1_stall.eq(self.a_stall),
-            icache.s2_address.eq(self.f_pc),
+            icache.s2_address.eq(self.f_pc[2:]),
             icache.s2_stall.eq(self.f_stall),
             icache.s2_re.eq(self.f_valid)
         ]

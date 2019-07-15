@@ -47,7 +47,7 @@ class TriggerUnit(Elaboratable, AutoCSR):
         self.tdata1  = CSR(0x7a1, tdata1_layout, name="tdata1")
         self.tdata2  = CSR(0x7a2, flat_layout, name="tdata2")
 
-        self.x_pc = Signal(30)
+        self.x_pc = Signal(32)
         self.x_valid = Signal()
 
         self.haltreq = Signal()
@@ -95,7 +95,7 @@ class TriggerUnit(Elaboratable, AutoCSR):
                 m.d.comb += mcontrol.eq(self.tdata1.r.data)
                 match = Signal()
                 with m.If(mcontrol.execute):
-                    m.d.comb += match.eq((self.tdata2.r == self.x_pc << 2) & self.x_valid)
+                    m.d.comb += match.eq(self.tdata2.r == self.x_pc & self.x_valid)
                 m.d.comb += [
                     hit.eq(match & mcontrol.m),
                     halt.eq(mcontrol.action)

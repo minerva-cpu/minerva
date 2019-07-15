@@ -31,13 +31,13 @@ __all__ = ["Minerva"]
 
 
 _af_layout = [
-    ("pc",      (31, True)),
+    ("pc",      (33, True)),
     ("misaligned_fetch", 1)
 ]
 
 
 _fd_layout = [
-    ("pc",               30),
+    ("pc",               32),
     ("misaligned_fetch",  1),
     ("instruction",      32),
     ("bus_error",         1)
@@ -45,7 +45,7 @@ _fd_layout = [
 
 
 _dx_layout = [
-    ("pc",                  30),
+    ("pc",                  32),
     ("misaligned_fetch",     1),
     ("rd",                   5),
     ("rs1",                  5),
@@ -84,7 +84,7 @@ _dx_layout = [
 
 
 _xm_layout = [
-    ("pc",                  30),
+    ("pc",                  32),
     ("rd",                   5),
     ("rd_we",                1),
     ("bypass_m",             1),
@@ -108,7 +108,7 @@ _xm_layout = [
 
 
 _mw_layout = [
-    ("pc",                30),
+    ("pc",                32),
     ("rd",                 5),
     ("rd_we",              1),
     ("result",            32),
@@ -209,7 +209,7 @@ class Minerva(Elaboratable):
         for s1, s2 in zip(sources, sinks):
             cpu.d.comb += s1.source.connect(s2.sink)
 
-        a.source.pc.reset = self.reset_address//4 - 1
+        a.source.pc.reset = self.reset_address - 4
         cpu.d.comb += a.valid.eq(Const(1))
 
         # register files
@@ -242,7 +242,7 @@ class Minerva(Elaboratable):
         cpu.d.comb += [
             fetch.ibus.connect(self.ibus),
             fetch.a_stall.eq(a.stall),
-            fetch.f_pc.eq(f.sink.pc[:30]),
+            fetch.f_pc.eq(f.sink.pc),
             fetch.f_stall.eq(f.stall),
             fetch.d_branch_predict_taken.eq(predict.d_branch_taken),
             fetch.d_branch_target.eq(predict.d_branch_target),
@@ -452,7 +452,7 @@ class Minerva(Elaboratable):
         x_csr_result = Signal(32)
 
         with cpu.If(x.sink.jump):
-            cpu.d.comb += x_result.eq(x.sink.pc + 1 << 2)
+            cpu.d.comb += x_result.eq(x.sink.pc + 4)
         with cpu.Elif(x.sink.logic):
             cpu.d.comb += x_result.eq(logic.result)
         with cpu.Elif(x.sink.csr):
@@ -521,7 +521,7 @@ class Minerva(Elaboratable):
         with cpu.If(decoder.lui):
             cpu.d.comb += d_src1.eq(0)
         with cpu.Elif(decoder.auipc):
-            cpu.d.comb += d_src1.eq(d.sink.pc << 2)
+            cpu.d.comb += d_src1.eq(d.sink.pc)
         with cpu.Elif(decoder.rs1_re & (decoder.rs1 == 0)):
             cpu.d.comb += d_src1.eq(0)
         with cpu.Elif(x_raw_rs1 & x.valid):
@@ -611,7 +611,7 @@ class Minerva(Elaboratable):
             with cpu.If(debug.resumereq):
                 with cpu.If(~debug.dbus_busy):
                     cpu.d.comb += debug.resumeack.eq(1)
-                    cpu.d.sync += a.source.pc.eq(debug.dpc_value[2:] - 1)
+                    cpu.d.sync += a.source.pc.eq(debug.dpc_value - 4)
 
             if self.with_icache:
                 fetch.icache.flush_on(debug.resumereq)
@@ -637,7 +637,7 @@ class Minerva(Elaboratable):
         # F/D
         with cpu.If(~f.stall):
             cpu.d.sync += [
-                f.source.pc.eq(f.sink.pc[:30]),
+                f.source.pc.eq(f.sink.pc),
                 f.source.misaligned_fetch.eq(f.sink.misaligned_fetch),
                 f.source.instruction.eq(fetch.f_instruction),
                 f.source.bus_error.eq(fetch.f_bus_error)

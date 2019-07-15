@@ -9,7 +9,7 @@ class BranchPredictor(Elaboratable):
         self.d_branch = Signal()
         self.d_jump = Signal()
         self.d_offset = Signal((32, True))
-        self.d_pc = Signal(30)
+        self.d_pc = Signal(32)
         self.d_rs1_re = Signal()
 
         self.d_branch_taken = Signal()
@@ -27,6 +27,6 @@ class BranchPredictor(Elaboratable):
             # Other branch types (ie. indirect jumps, exceptions) are not predicted.
             m.d.comb += self.d_branch_taken.eq(self.d_jump & ~self.d_rs1_re)
 
-        m.d.comb += self.d_branch_target.eq((self.d_pc << 2) + self.d_offset)
+        m.d.comb += self.d_branch_target.eq(self.d_pc + self.d_offset)
 
         return m

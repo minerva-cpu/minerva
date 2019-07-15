@@ -31,12 +31,12 @@ class DebugUnit(Elaboratable, AutoCSR):
         self.trigger_haltreq = Signal()
 
         self.x_ebreak = Signal()
-        self.x_pc = Signal(30)
+        self.x_pc = Signal(32)
         self.x_stall = Signal()
 
         self.m_branch_taken = Signal()
         self.m_branch_target = Signal(32)
-        self.m_pc = Signal(30)
+        self.m_pc = Signal(32)
         self.m_valid = Signal()
 
         self.dcsr_step = Signal()

@@ -35,13 +35,13 @@ class DebugController(Elaboratable, AutoCSR):
 
         self.trigger_haltreq = Signal()
 
-        self.x_pc = Signal(30)
+        self.x_pc = Signal(32)
         self.x_ebreak = Signal()
         self.x_stall = Signal()
 
         self.m_branch_taken = Signal()
         self.m_branch_target = Signal(32)
-        self.m_pc = Signal(30)
+        self.m_pc = Signal(32)
         self.m_valid = Signal()
 
         self.halt = Signal()
@@ -111,11 +111,11 @@ class DebugController(Elaboratable, AutoCSR):
                         self.dcsr.r.stepie.eq(1)
                     ]
                     with m.If(halt_pe.o == HaltCause.EBREAK):
-                        m.d.sync += self.dpc.r.eq(self.m_pc << 2)
+                        m.d.sync += self.dpc.r.eq(self.m_pc)
                     with m.Elif(self.m_branch_taken & self.m_valid):
                         m.d.sync += self.dpc.r.eq(self.m_branch_target)
                     with m.Else():
-                        m.d.sync += self.dpc.r.eq(self.x_pc << 2)
+                        m.d.sync += self.dpc.r.eq(self.x_pc)
                     m.next = "HALTING"
 
             with m.State("HALTING"):

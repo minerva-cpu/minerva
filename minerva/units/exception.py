@@ -23,7 +23,7 @@ class ExceptionUnit(Elaboratable, AutoCSR):
 
         self.external_interrupt = Signal(32)
         self.timer_interrupt = Signal()
-        self.x_pc = Signal(30)
+        self.x_pc = Signal(32)
         self.x_ebreak = Signal()
         self.x_ecall = Signal()
         self.x_misaligned_fetch = Signal()
@@ -76,13 +76,13 @@ class ExceptionUnit(Elaboratable, AutoCSR):
                     m.d.sync += [
                         self.mcause.r.ecode.eq(trap_pe.o),
                         self.mcause.r.interrupt.eq(0),
-                        self.mepc.r.eq(self.x_pc + ~(self.x_ebreak | self.x_ecall) << 2)
+                        self.mepc.r.eq(self.x_pc[2:] + ~(self.x_ebreak | self.x_ecall) << 2)
                     ]
                 with m.Else():
                     m.d.sync += [
                         self.mcause.r.ecode.eq(interrupt_pe.o),
                         self.mcause.r.interrupt.eq(1),
-                        self.mepc.r.eq(self.x_pc << 2)
+                        self.mepc.r.eq(self.x_pc[2:] << 2)
                     ]
             with m.Elif(self.x_mret):
                 m.d.sync += self.mstatus.r.mie.eq(self.mstatus.r.mpie)
