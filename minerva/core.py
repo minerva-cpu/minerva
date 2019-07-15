@@ -47,6 +47,7 @@ _fd_layout = [
 _dx_layout = [
     ("pc",                  32),
     ("misaligned_fetch",     1),
+    ("instruction",         32),
     ("rd",                   5),
     ("rs1",                  5),
     ("rd_we",                1),
@@ -351,6 +352,7 @@ class Minerva(Elaboratable):
             exception.external_interrupt.eq(self.external_interrupt),
             exception.timer_interrupt.eq(self.timer_interrupt),
             exception.x_pc.eq(x.sink.pc),
+            exception.x_instruction.eq(x.sink.instruction),
             exception.x_ecall.eq(x.sink.ecall),
             exception.x_misaligned_fetch.eq(x.sink.misaligned_fetch),
             exception.x_bus_error.eq(x.sink.bus_error),
@@ -649,6 +651,7 @@ class Minerva(Elaboratable):
                 d.source.pc.eq(d.sink.pc),
                 d.source.misaligned_fetch.eq(d.sink.misaligned_fetch),
                 d.source.bus_error.eq(d.sink.bus_error),
+                d.source.instruction.eq(d.sink.instruction),
                 d.source.rd.eq(decoder.rd),
                 d.source.rs1.eq(decoder.rs1),
                 d.source.rd_we.eq(decoder.rd_we),

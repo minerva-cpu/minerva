@@ -17,6 +17,7 @@ class ExceptionUnit(Elaboratable, AutoCSR):
         self.mscratch    = CSR(0x340, flat_layout, name="mscratch") # FIXME move elsewhere
         self.mepc        = CSR(0x341, flat_layout, name="mepc")
         self.mcause      = CSR(0x342, mcause_layout, name="mcause")
+        self.mtval       = CSR(0x343, flat_layout, name="mtval")
         self.mip         = CSR(0x344, mip_layout, name="mip")
         self.irq_mask    = CSR(0x330, flat_layout, name="irq_mask")
         self.irq_pending = CSR(0x360, flat_layout, name="irq_pending")
@@ -24,6 +25,7 @@ class ExceptionUnit(Elaboratable, AutoCSR):
         self.external_interrupt = Signal(32)
         self.timer_interrupt = Signal()
         self.x_pc = Signal(32)
+        self.x_instruction = Signal(32)
         self.x_ebreak = Signal()
         self.x_ecall = Signal()
         self.x_misaligned_fetch = Signal()
@@ -78,6 +80,13 @@ class ExceptionUnit(Elaboratable, AutoCSR):
                         self.mcause.r.ecode.eq(trap_pe.o),
                         self.mcause.r.interrupt.eq(0)
                     ]
+                    with m.Switch(trap_pe.o):
+                        with m.Case(Cause.FETCH_MISALIGNED, Cause.BREAKPOINT):
+                            m.d.sync += self.mtval.r.eq(self.x_pc)
+                        with m.Case(Cause.ILLEGAL_INSTRUCTION):
+                            m.d.sync += self.mtval.r.eq(self.x_instruction)
+                        with m.Case():
+                            m.d.sync += self.mtval.r.eq(0)
                 with m.Else():
                     m.d.sync += [
                         self.mcause.r.ecode.eq(interrupt_pe.o),
