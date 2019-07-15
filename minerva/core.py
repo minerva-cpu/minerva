@@ -40,7 +40,7 @@ _fd_layout = [
     ("pc",               32),
     ("misaligned_fetch",  1),
     ("instruction",      32),
-    ("bus_error",         1)
+    ("ibus_error",        1)
 ]
 
 
@@ -48,6 +48,7 @@ _dx_layout = [
     ("pc",                  32),
     ("misaligned_fetch",     1),
     ("instruction",         32),
+    ("ibus_error",           1),
     ("rd",                   5),
     ("rs1",                  5),
     ("rd_we",                1),
@@ -76,7 +77,6 @@ _dx_layout = [
     ("csr",                  1),
     ("csr_adr",             12),
     ("csr_we",               1),
-    ("bus_error",            1),
     ("ecall",                1),
     ("ebreak",               1),
     ("mret",                 1),
@@ -356,7 +356,7 @@ class Minerva(Elaboratable):
             exception.x_address.eq(loadstore.x_address),
             exception.x_ecall.eq(x.sink.ecall),
             exception.x_misaligned_fetch.eq(x.sink.misaligned_fetch),
-            exception.x_bus_error.eq(x.sink.bus_error),
+            exception.x_ibus_error.eq(x.sink.ibus_error),
             exception.x_illegal.eq(x.sink.illegal),
             exception.x_misaligned_load.eq(loadstore.x_load & loadstore.x_misaligned),
             exception.x_misaligned_store.eq(loadstore.x_store & loadstore.x_misaligned),
@@ -645,7 +645,7 @@ class Minerva(Elaboratable):
                 f.source.pc.eq(f.sink.pc),
                 f.source.misaligned_fetch.eq(f.sink.misaligned_fetch),
                 f.source.instruction.eq(fetch.f_instruction),
-                f.source.bus_error.eq(fetch.f_bus_error)
+                f.source.ibus_error.eq(fetch.f_ibus_error)
             ]
 
         # D/X
@@ -653,8 +653,8 @@ class Minerva(Elaboratable):
             cpu.d.sync += [
                 d.source.pc.eq(d.sink.pc),
                 d.source.misaligned_fetch.eq(d.sink.misaligned_fetch),
-                d.source.bus_error.eq(d.sink.bus_error),
                 d.source.instruction.eq(d.sink.instruction),
+                d.source.ibus_error.eq(d.sink.ibus_error),
                 d.source.rd.eq(decoder.rd),
                 d.source.rs1.eq(decoder.rs1),
                 d.source.rd_we.eq(decoder.rd_we),

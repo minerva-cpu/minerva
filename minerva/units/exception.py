@@ -30,9 +30,9 @@ class ExceptionUnit(Elaboratable, AutoCSR):
         self.x_ebreak = Signal()
         self.x_ecall = Signal()
         self.x_misaligned_fetch = Signal()
-        self.x_bus_error = Signal()
         self.x_misaligned_load = Signal()
         self.x_misaligned_store = Signal()
+        self.x_ibus_error = Signal()
         self.x_illegal = Signal()
         self.x_mret = Signal()
         self.x_stall = Signal()
@@ -50,7 +50,7 @@ class ExceptionUnit(Elaboratable, AutoCSR):
         trap_pe = m.submodules.trap_pe = PriorityEncoder(16)
         m.d.comb += [
             trap_pe.i[Cause.FETCH_MISALIGNED   ].eq(self.x_misaligned_fetch),
-            trap_pe.i[Cause.FETCH_ACCESS_FAULT ].eq(self.x_bus_error),
+            trap_pe.i[Cause.FETCH_ACCESS_FAULT ].eq(self.x_ibus_error),
             trap_pe.i[Cause.ILLEGAL_INSTRUCTION].eq(self.x_illegal),
             trap_pe.i[Cause.BREAKPOINT         ].eq(self.x_ebreak),
             trap_pe.i[Cause.LOAD_MISALIGNED    ].eq(self.x_misaligned_load),

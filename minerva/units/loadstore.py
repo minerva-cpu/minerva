@@ -30,7 +30,7 @@ class _LoadStoreUnitBase(Elaboratable):
         self.x_misaligned = Signal()
         self.x_dbus_sel = Signal(4)
         self.x_store_data = Signal(32)
-        self.m_bus_error = Signal()
+        self.m_dbus_error = Signal()
         self.m_load_data = Signal(32)
         self.w_load_result = Signal((32, True))
 
@@ -99,7 +99,7 @@ class SimpleLoadStoreUnit(_LoadStoreUnitBase):
                     self.dbus.stb.eq(0),
                     self.m_load_data.eq(self.dbus.dat_r)
                 ]
-            m.d.sync += self.m_bus_error.eq(self.dbus.err)
+            m.d.sync += self.m_dbus_error.eq(self.dbus.err)
         with m.Elif(self.x_valid & ~self.x_stall):
             with m.If(self.x_store & ~self.x_misaligned):
                 m.d.sync += [
@@ -205,7 +205,7 @@ class CachedLoadStoreUnit(_LoadStoreUnitBase):
                         self.dbus.adr[:dcache.offsetbits].eq(next_offset),
                         self.dbus.cti.eq(next_cti),
                     ]
-                m.d.sync += self.m_bus_error.eq(self.dbus.err)
+                m.d.sync += self.m_dbus_error.eq(self.dbus.err)
         with m.Elif(wrbuf.readable):
             m.d.comb += wrbuf.re.eq(1)
             m.d.sync += [

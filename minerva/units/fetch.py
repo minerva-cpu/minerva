@@ -26,7 +26,7 @@ class _FetchUnitBase(Elaboratable):
         self.a_pc = Signal(32)
         self.a_misaligned = Signal()
         self.f_instruction = Signal(32)
-        self.f_bus_error = Signal()
+        self.f_ibus_error = Signal()
 
     def elaborate(self, platform):
         m = Module()
@@ -56,12 +56,12 @@ class SimpleFetchUnit(_FetchUnitBase):
 
         f_instruction   = Signal(32)
         f_instruction_r = Signal(32)
-        f_bus_error     = Signal()
-        f_bus_error_r   = Signal()
+        f_ibus_error    = Signal()
+        f_ibus_error_r  = Signal()
 
         m.d.comb += [
             self.f_instruction.eq(Mux(self.f_stall, f_instruction_r, f_instruction)),
-            self.f_bus_error.eq(Mux(self.f_stall, f_bus_error_r, f_bus_error))
+            self.f_ibus_error.eq(Mux(self.f_stall, f_ibus_error_r, f_ibus_error))
         ]
 
         with m.If(self.ibus.cyc):
@@ -70,7 +70,7 @@ class SimpleFetchUnit(_FetchUnitBase):
                     self.ibus.cyc.eq(0),
                     self.ibus.stb.eq(0),
                     f_instruction.eq(self.ibus.dat_r),
-                    f_bus_error.eq(self.ibus.err)
+                    f_ibus_error.eq(self.ibus.err)
                 ]
         with m.Elif(~self.a_stall):
             m.d.sync += [
@@ -78,7 +78,7 @@ class SimpleFetchUnit(_FetchUnitBase):
                 self.ibus.cyc.eq(1),
                 self.ibus.stb.eq(1),
                 f_instruction_r.eq(f_instruction),
-                f_bus_error_r.eq(f_bus_error)
+                f_ibus_error_r.eq(f_ibus_error)
             ]
 
         return m
@@ -140,7 +140,7 @@ class CachedFetchUnit(_FetchUnitBase):
                     self.ibus.adr[:icache.offsetbits].eq(next_offset),
                     self.ibus.cti.eq(next_cti)
                 ]
-            m.d.sync += self.f_bus_error.eq(self.ibus.err)
+            m.d.sync += self.f_ibus_error.eq(self.ibus.err)
         with m.Elif(icache.refill_request):
             m.d.sync += [
                 last_offset.eq(icache.s2_address[:icache.offsetbits]-1),
