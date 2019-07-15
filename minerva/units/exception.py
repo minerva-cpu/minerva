@@ -70,19 +70,18 @@ class ExceptionUnit(Elaboratable, AutoCSR):
             with m.If(self.x_raise):
                 m.d.sync += [
                     self.mstatus.r.mpie.eq(self.mstatus.r.mie),
-                    self.mstatus.r.mie.eq(0)
+                    self.mstatus.r.mie.eq(0),
+                    self.mepc.r.eq(self.x_pc[2:] << 2)
                 ]
                 with m.If(~trap_pe.n):
                     m.d.sync += [
                         self.mcause.r.ecode.eq(trap_pe.o),
-                        self.mcause.r.interrupt.eq(0),
-                        self.mepc.r.eq(self.x_pc[2:] + ~(self.x_ebreak | self.x_ecall) << 2)
+                        self.mcause.r.interrupt.eq(0)
                     ]
                 with m.Else():
                     m.d.sync += [
                         self.mcause.r.ecode.eq(interrupt_pe.o),
-                        self.mcause.r.interrupt.eq(1),
-                        self.mepc.r.eq(self.x_pc[2:] << 2)
+                        self.mcause.r.interrupt.eq(1)
                     ]
             with m.Elif(self.x_mret):
                 m.d.sync += self.mstatus.r.mie.eq(self.mstatus.r.mpie)
