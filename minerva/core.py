@@ -486,7 +486,7 @@ class Minerva(Elaboratable):
         with cpu.If(x_csr_set_clear):
             cpu.d.comb += x_csr_result.eq(logic.result)
         with cpu.Else():
-            cpu.d.comb += x_csr_result.eq(x.sink.src1)
+            cpu.d.comb += x_csr_result.eq(x_csr_src1)
 
         cpu.d.comb += [
             csrf_wp.en.eq(x.sink.csr & x.sink.csr_we & x.valid & ~exception.x_raise & ~x.stall),
