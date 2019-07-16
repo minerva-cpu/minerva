@@ -2,7 +2,7 @@
 
 ## A 32-bit RISC-V soft processor
 
-Minerva is a CPU core that currently implements the [RISC-V][1] RV32I instruction set. Its microarchitecture is described in plain Python code using the [nMigen][2] toolbox.
+Minerva is a CPU core that currently implements the [RISC-V][1] RV32IM instruction set. Its microarchitecture is described in plain Python code using the [nMigen][2] toolbox.
 
 ### Quick start
 
@@ -11,12 +11,12 @@ Minerva currently requires Python 3.6+ and [nMigen][2] on its `master` branch.
     python setup.py install
     python build.py > minerva.v
 
-nMigen currently propagates a lot of unneeded inputs to the toplevel. To use Minerva, you only need to wire the following ports to `minerva_cpu`:
+To use Minerva, you need to wire the following ports to `minerva_cpu`:
 
 * `clk`
 * `rst`
-* `ibus_*`
-* `dbus_*`
+* `ibus__*`
+* `dbus__*`
 * `external_interrupt`
 
 ### Features
@@ -57,16 +57,20 @@ The following parameters can be used to configure the Minerva core.
 | `reset_address`   | `0x00000000`   | Reset vector address                               |
 | `with_icache`     | `True`         | Enable the instruction cache                       |
 | `icache_nb_ways`  | `1`            | Number of ways in the instruction cache            |
-| `icache_nb_lines` | `512`          | Number of lines in the instruction cache           |
+| `icache_nb_lines` | `256`          | Number of lines in the instruction cache           |
 | `icache_nb_words` | `8`            | Number of words in a line of the instruction cache |
 | `icache_base`     | `0x00000000`   | Base of the instruction cache address space        |
 | `icache_limit`    | `0x80000000`   | Limit of the instruction cache address space       |
 | `with_dcache`     | `True`         | Enable the data cache                              |
 | `dcache_nb_ways`  | `1`            | Number of ways in the data cache                   |
-| `dcache_nb_lines` | `512`          | Number of lines in the data cache                  |
+| `dcache_nb_lines` | `256`          | Number of lines in the data cache                  |
 | `dcache_nb_words` | `8`            | Number of words in a line of the data cache        |
 | `dcache_base`     | `0x00000000`   | Base of the data cache address space               |
 | `dcache_limit`    | `0x80000000`   | Limit of the data cache address space              |
+| `as_instance`     | `False`        | Add a default clock domain                         |
+| `with_muldiv`     | `False`        | Enable RV32M support                               |
+| `with_debug`      | `False`        | Enable the Debug Module                            |
+| `with_trigger`    | `False`        | Enable the Trigger Module                          |
 
 ### Possible improvements
 
