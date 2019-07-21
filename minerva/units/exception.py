@@ -49,6 +49,7 @@ class ExceptionUnit(Elaboratable, AutoCSR):
 
         trap_pe = m.submodules.trap_pe = PriorityEncoder(16)
         m.d.comb += [
+            trap_pe.i.eq(0),
             trap_pe.i[Cause.FETCH_MISALIGNED   ].eq(self.x_misaligned_fetch),
             trap_pe.i[Cause.FETCH_ACCESS_FAULT ].eq(self.x_ibus_error),
             trap_pe.i[Cause.ILLEGAL_INSTRUCTION].eq(self.x_illegal),
@@ -66,6 +67,7 @@ class ExceptionUnit(Elaboratable, AutoCSR):
 
         interrupt_pe = m.submodules.interrupt_pe = PriorityEncoder(16)
         m.d.comb += [
+            interrupt_pe.i.eq(0),
             interrupt_pe.i[Cause.M_SOFTWARE_INTERRUPT].eq(self.mip.r.msip & self.mie.r.msie),
             interrupt_pe.i[Cause.M_TIMER_INTERRUPT   ].eq(self.mip.r.mtip & self.mie.r.mtie),
             interrupt_pe.i[Cause.M_EXTERNAL_INTERRUPT].eq(self.mip.r.meip & self.mie.r.meie)
