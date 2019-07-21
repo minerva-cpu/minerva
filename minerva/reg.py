@@ -22,7 +22,7 @@ class RegisterFileBase:
         self._write_ports = []
 
     def scan(self, method):
-        for submodule, name in self.source._submodules:
+        for submodule in self.source._anon_submodules:
             if hasattr(submodule, method):
                 for reg in getattr(submodule, method)():
                     if reg.addr in self._register_map:
