@@ -221,9 +221,15 @@ class Minerva(Elaboratable):
         gprf_wp  = gprf.write_port()
         cpu.submodules += gprf_rp1, gprf_rp2, gprf_wp
 
-        csrf = cpu.submodules.csrf = CSRFile(cpu)
+        csrf = cpu.submodules.csrf = CSRFile()
         csrf_rp = csrf.read_port()
         csrf_wp = csrf.write_port()
+
+        csrf.add_csrs(self.exception.iter_csrs())
+        if self.with_debug:
+            csrf.add_csrs(self.debug.iter_csrs())
+        if self.with_trigger:
+            csrf.add_csrs(self.trigger.iter_csrs())
 
         # units
 

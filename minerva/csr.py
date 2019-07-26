@@ -1,9 +1,9 @@
 from enum import Enum
+from collections import OrderedDict
 
 from nmigen import *
 from nmigen.hdl.rec import *
-
-from .reg import *
+from nmigen.tools import bits_for
 
 
 __all__ = ["CSRAccess", "CSR", "AutoCSR", "CSRFile"]
@@ -12,51 +12,64 @@ __all__ = ["CSRAccess", "CSR", "AutoCSR", "CSRFile"]
 CSRAccess = Enum("CSRAccess", ("WIRI", "WPRI", "WLRL", "WARL"))
 
 
-class _CSRLayout(Layout):
-    def __init__(self, fields):
-        super().__init__([(name, shape) for name, shape, *_ in fields])
-        self.params = dict()
-        for name, shape, access in fields:
-            self.params[name] = access
+class CSR():
+    def __init__(self, addr, description, name=None):
+        self.addr = addr
+        self.access = OrderedDict()
+        fields = []
+        for name, shape, access in description:
+            fields.append((name, shape))
+            self.access[name] = access
+        self.r = Record(fields)
+        self.w = Record(fields)
+        self.re = Signal()
+        self.we = Signal()
 
 
-class CSR(RegisterBase):
-    def __init__(self, addr, fields, name=None):
-        self.layout = _CSRLayout(fields)
-        width = sum(f[1] for f in fields)
-        super().__init__(addr, width, name)
-        self.re = Signal(name=f"{self.name}_re")
-        self.r  = Record(self.layout, name=f"{self.name}_r")
-        self.we = Signal(name=f"{self.name}_we")
-        self.w  = Record(self.layout, name=f"{self.name}_w")
-
-
-class AutoCSR:
-    def get_csrs(self):
-        csrs = []
+class AutoCSR():
+    def iter_csrs(self):
         for v in vars(self).values():
-            if not isinstance(v, Value):
-                if isinstance(v, CSR):
-                    csrs.append(v)
-                elif hasattr(v, "get_csrs"):
-                    csrs += getattr(v, "get_csrs")()
-        return csrs
+            if isinstance(v, CSR):
+                yield v
+            elif hasattr(v, "iter_csrs"):
+                yield from v.iter_csrs()
 
 
-class CSRFile(Elaboratable, RegisterFileBase):
-    def __init__(self, source, width=32, depth=2**12):
-        super().__init__(source, width, depth)
+class CSRFile(Elaboratable):
+    def __init__(self, width=32, depth=2**12):
+        self.width = width
+        self.depth = depth
+        self._csr_map = OrderedDict()
+        self._read_ports = []
+        self._write_ports = []
+
+    def add_csrs(self, csrs):
+        for csr in csrs:
+            if not isinstance(csr, CSR):
+                raise TypeError("Object {!r} is not a CSR".format(csr))
+            if csr.addr in self._csr_map:
+                raise ValueError("CSR address 0x{:x} has already been allocated"
+                                 .format(csr.addr))
+            self._csr_map[csr.addr] = csr
+
+    def read_port(self):
+        port = Record([("addr", bits_for(self.depth)), ("en", 1), ("data", self.width)])
+        self._read_ports.append(port)
+        return port
+
+    def write_port(self):
+        port = Record([("addr", bits_for(self.depth)), ("en", 1), ("data", self.width)])
+        self._write_ports.append(port)
+        return port
 
     def elaborate(self, platform):
         m = Module()
 
-        self.scan("get_csrs")
-
         def do_read(csr, rp):
-            dat_r = Record(csr.layout)
+            dat_r = Record.like(csr.r)
             m.d.comb += rp.data.eq(dat_r)
             for name, field in csr.r.fields.items():
-                access = csr.layout.params[name]
+                access = csr.access[name]
                 if access in {CSRAccess.WLRL, CSRAccess.WARL}:
                     m.d.comb += dat_r[name].eq(field)
                 else:
@@ -64,10 +77,10 @@ class CSRFile(Elaboratable, RegisterFileBase):
             m.d.comb += csr.re.eq(rp.en)
 
         def do_write(csr, wp):
-            dat_w = Record(csr.layout)
+            dat_w = Record.like(csr.w)
             m.d.comb += dat_w.eq(wp.data)
             for name, field in csr.w.fields.items():
-                access = csr.layout.params[name]
+                access = csr.access[name]
                 if access in {CSRAccess.WLRL, CSRAccess.WARL}:
                     m.d.comb += field.eq(dat_w[name])
                 else:
@@ -76,13 +89,13 @@ class CSRFile(Elaboratable, RegisterFileBase):
 
         for rp in self._read_ports:
             with m.Switch(rp.addr):
-                for addr, csr in self._register_map.items():
+                for addr, csr in self._csr_map.items():
                     with m.Case(addr):
                         do_read(csr, rp)
 
         for wp in self._write_ports:
             with m.Switch(wp.addr):
-                for addr, csr in self._register_map.items():
+                for addr, csr in self._csr_map.items():
                     with m.Case(addr):
                         do_write(csr, wp)
 

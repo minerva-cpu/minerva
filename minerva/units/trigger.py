@@ -56,7 +56,7 @@ class TriggerUnit(Elaboratable, AutoCSR):
     def elaborate(self, platform):
         m = Module()
 
-        triggers = [Record(self.tdata1.layout) for _ in range(self.nb_triggers)]
+        triggers = [Record.like(self.tdata1.r) for _ in range(self.nb_triggers)]
         for t in triggers:
             # We only support address/data match triggers.
             m.d.comb += t.type.eq(Type.MATCH)

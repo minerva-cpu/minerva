@@ -43,7 +43,7 @@ class ExceptionUnit(Elaboratable, AutoCSR):
     def elaborate(self, platform):
         m = Module()
 
-        for csr in self.get_csrs():
+        for csr in self.iter_csrs():
             with m.If(csr.we):
                 m.d.sync += csr.r.eq(csr.w)
 
