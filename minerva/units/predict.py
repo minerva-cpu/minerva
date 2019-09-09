@@ -14,6 +14,7 @@ class BranchPredictor(Elaboratable):
 
         self.d_branch_taken = Signal()
         self.d_branch_target = Signal(32)
+        self.d_fetch_misaligned = Signal()
 
     def elaborate(self, platform):
         m = Module()
@@ -27,6 +28,9 @@ class BranchPredictor(Elaboratable):
             # Other branch types (ie. indirect jumps, exceptions) are not predicted.
             m.d.comb += self.d_branch_taken.eq(self.d_jump & ~self.d_rs1_re)
 
-        m.d.comb += self.d_branch_target.eq(self.d_pc + self.d_offset)
+        m.d.comb += [
+            self.d_branch_target.eq(self.d_pc + self.d_offset),
+            self.d_fetch_misaligned.eq(self.d_branch_target[:2].bool())
+        ]
 
         return m
