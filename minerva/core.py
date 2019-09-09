@@ -61,6 +61,7 @@ _dx_layout = [
     ("funct3",               3),
     ("load",                 1),
     ("store",                1),
+    ("adder",                1),
     ("adder_sub",            1),
     ("logic",                1),
     ("multiply",             1),
@@ -314,7 +315,7 @@ class Minerva(Elaboratable):
         ]
 
         cpu.d.comb += [
-            adder.sub.eq(x.sink.adder_sub),
+            adder.sub.eq(x.sink.adder & x.sink.adder_sub),
             adder.src1.eq(x.sink.src1),
             adder.src2.eq(Mux(x.sink.store, x.sink.immediate, x.sink.src2))
         ]
@@ -671,6 +672,7 @@ class Minerva(Elaboratable):
                 d.source.funct3.eq(decoder.funct3),
                 d.source.load.eq(decoder.load),
                 d.source.store.eq(decoder.store),
+                d.source.adder.eq(decoder.adder),
                 d.source.adder_sub.eq(decoder.adder_sub),
                 d.source.compare.eq(decoder.compare),
                 d.source.logic.eq(decoder.logic),
