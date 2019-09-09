@@ -147,44 +147,17 @@ class Minerva(Elaboratable):
         if with_debug:
             self.jtag = Record(jtag_layout)
 
-        ###
 
         self.reset_address = reset_address
         self.as_instance   = as_instance
         self.with_icache   = with_icache
+        self.icache_args   = icache_nways, icache_nb_lines, icache_nb_words, icache_base, icache_limit
         self.with_dcache   = with_dcache
+        self.dcache_args   = dcache_nways, dcache_nb_lines, dcache_nb_words, dcache_base, dcache_limit
         self.with_muldiv   = with_muldiv
         self.with_debug    = with_debug
         self.with_trigger  = with_trigger
-
-        icache_args = icache_nb_ways, icache_nb_lines, icache_nb_words, icache_base, icache_limit
-        if with_icache:
-            self.fetch = CachedFetchUnit(*icache_args)
-        else:
-            self.fetch = SimpleFetchUnit()
-
-        dcache_args = dcache_nb_ways, dcache_nb_lines, dcache_nb_words, dcache_base, dcache_limit
-        if with_dcache:
-            self.loadstore = CachedLoadStoreUnit(*dcache_args)
-        else:
-            self.loadstore = SimpleLoadStoreUnit()
-
-        if with_debug:
-            self.debug = DebugUnit()
-
-        if with_trigger:
-            self.trigger = TriggerUnit(nb_triggers)
-
-        self.adder      = Adder()
-        self.compare    = CompareUnit()
-        self.decoder    = InstructionDecoder(self.with_muldiv)
-        if self.with_muldiv:
-            self.multiplier = Multiplier()
-            self.divider    = Divider()
-        self.exception  = ExceptionUnit()
-        self.logic      = LogicUnit()
-        self.predict    = BranchPredictor()
-        self.shifter    = Shifter()
+        self.nb_triggers   = nb_triggers
 
     def elaborate(self, platform):
         cpu = Module()
@@ -214,6 +187,36 @@ class Minerva(Elaboratable):
         a.source.pc.reset = self.reset_address - 4
         cpu.d.comb += a.valid.eq(Const(1))
 
+        # units
+
+        adder     = cpu.submodules.adder     = Adder()
+        compare   = cpu.submodules.compare   = CompareUnit()
+        decoder   = cpu.submodules.decoder   = InstructionDecoder(self.with_muldiv)
+        exception = cpu.submodules.exception = ExceptionUnit()
+        logic     = cpu.submodules.logic     = LogicUnit()
+        predict   = cpu.submodules.predict   = BranchPredictor()
+        shifter   = cpu.submodules.shifter   = Shifter()
+
+        if self.with_icache:
+            fetch = cpu.submodules.fetch = CachedFetchUnit(*self.icache_args)
+        else:
+            fetch = cpu.submodules.fetch = SimpleFetchUnit()
+
+        if self.with_dcache:
+            loadstore = cpu.submodules.loadstore = CachedLoadStoreUnit(*self.dcache_args)
+        else:
+            loadstore = cpu.submodules.loadstore = SimpleLoadStoreUnit()
+
+        if self.with_muldiv:
+            multiplier = cpu.submodules.multiplier = Multiplier()
+            divider    = cpu.submodules.divider    = Divider()
+
+        if self.with_debug:
+            debug = cpu.submodules.debug = DebugUnit()
+
+        if self.with_trigger:
+            trigger = cpu.submodules.trigger = TriggerUnit(self.nb_triggers)
+
         # register files
 
         gprf = Memory(width=32, depth=32)
@@ -226,26 +229,13 @@ class Minerva(Elaboratable):
         csrf_rp = csrf.read_port()
         csrf_wp = csrf.write_port()
 
-        csrf.add_csrs(self.exception.iter_csrs())
+        csrf.add_csrs(exception.iter_csrs())
         if self.with_debug:
-            csrf.add_csrs(self.debug.iter_csrs())
+            csrf.add_csrs(debug.iter_csrs())
         if self.with_trigger:
-            csrf.add_csrs(self.trigger.iter_csrs())
+            csrf.add_csrs(trigger.iter_csrs())
 
-        # units
-
-        adder      = cpu.submodules.adder      = self.adder
-        compare    = cpu.submodules.compare    = self.compare
-        decoder    = cpu.submodules.decoder    = self.decoder
-        if self.with_muldiv:
-            multiplier = cpu.submodules.multiplier = self.multiplier
-            divider    = cpu.submodules.divider    = self.divider
-        exception  = cpu.submodules.exception  = self.exception
-        fetch      = cpu.submodules.fetch      = self.fetch
-        loadstore  = cpu.submodules.loadstore  = self.loadstore
-        logic      = cpu.submodules.logic      = self.logic
-        predict    = cpu.submodules.predict    = self.predict
-        shifter    = cpu.submodules.shifter    = self.shifter
+        # pipeline logic
 
         cpu.d.comb += [
             fetch.ibus.connect(self.ibus),
@@ -287,11 +277,11 @@ class Minerva(Elaboratable):
         ]
 
         if self.with_debug:
-            with cpu.If(self.debug.halt & self.debug.halted):
-                cpu.d.comb += gprf_rp1.addr.eq(self.debug.gprf_addr)
+            with cpu.If(debug.halt & debug.halted):
+                cpu.d.comb += gprf_rp1.addr.eq(debug.gprf_addr)
             with cpu.Else():
                 cpu.d.comb += gprf_rp1.addr.eq(fetch.f_instruction[15:20])
-            cpu.d.comb += self.debug.gprf_dat_r.eq(gprf_rp1.data)
+            cpu.d.comb += debug.gprf_dat_r.eq(gprf_rp1.data)
         else:
             cpu.d.comb += gprf_rp1.addr.eq(fetch.f_instruction[15:20])
         cpu.d.comb += gprf_rp2.addr.eq(fetch.f_instruction[20:25])
@@ -377,9 +367,9 @@ class Minerva(Elaboratable):
             # If dcsr.ebreakm is set, EBREAK instructions enter Debug Mode.
             # We do not want to raise an exception in this case because Debug Mode
             # should be invisible to software execution.
-            x_ebreak &= ~self.debug.dcsr_ebreakm
+            m_ebreak &= ~debug.dcsr_ebreakm
         if self.with_trigger:
-            x_ebreak |= self.trigger.trap
+            x_ebreak |= trigger.trap
         cpu.d.comb += exception.x_ebreak.eq(x_ebreak)
 
         cpu.d.comb += [
@@ -417,8 +407,8 @@ class Minerva(Elaboratable):
             m.stall_on(self.dbus.cyc)
 
         if self.with_debug:
-            with cpu.If(self.debug.halt & self.debug.halted):
-                cpu.d.comb += self.debug.dbus.connect(self.dbus)
+            with cpu.If(debug.halt & debug.halted):
+                cpu.d.comb += debug.dbus.connect(self.dbus)
             with cpu.Else():
                 cpu.d.comb += loadstore.dbus.connect(self.dbus)
         else:
@@ -452,7 +442,7 @@ class Minerva(Elaboratable):
         ]
 
         if self.with_debug:
-            d.stall_on((x_lock & x.valid | m_lock & m.valid) & d.valid & ~self.debug.dcsr_step)
+            d.stall_on((x_lock & x.valid | m_lock & m.valid) & d.valid & ~debug.dcsr_step)
         else:
             d.stall_on((x_lock & x.valid | m_lock & m.valid) & d.valid)
 
@@ -502,11 +492,11 @@ class Minerva(Elaboratable):
         ]
 
         if self.with_debug:
-            with cpu.If(self.debug.halt & self.debug.halted):
+            with cpu.If(debug.halt & debug.halted):
                 cpu.d.comb += [
-                    gprf_wp.addr.eq(self.debug.gprf_addr),
-                    gprf_wp.en.eq(self.debug.gprf_we),
-                    gprf_wp.data.eq(self.debug.gprf_dat_w)
+                    gprf_wp.addr.eq(debug.gprf_addr),
+                    gprf_wp.en.eq(debug.gprf_we),
+                    gprf_wp.data.eq(debug.gprf_dat_w)
                 ]
             with cpu.Else():
                 cpu.d.comb += [
@@ -582,7 +572,6 @@ class Minerva(Elaboratable):
         # debug unit
 
         if self.with_debug:
-            debug = cpu.submodules.debug = self.debug
             cpu.d.comb += [
                 debug.jtag.connect(self.jtag),
                 debug.x_pc.eq(x.sink.pc),
@@ -595,7 +584,7 @@ class Minerva(Elaboratable):
             ]
 
             if self.with_trigger:
-                cpu.d.comb += debug.trigger_haltreq.eq(self.trigger.haltreq)
+                cpu.d.comb += debug.trigger_haltreq.eq(trigger.haltreq)
             else:
                 cpu.d.comb += debug.trigger_haltreq.eq(Const(0))
 
@@ -631,7 +620,6 @@ class Minerva(Elaboratable):
                 loadstore.dcache.flush_on(debug.resumereq)
 
         if self.with_trigger:
-            trigger = cpu.submodules.trigger = self.trigger
             cpu.d.comb += [
                 trigger.x_pc.eq(x.sink.pc),
                 trigger.x_valid.eq(x.valid),
