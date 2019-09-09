@@ -1,7 +1,7 @@
 from .csr import *
 
 __all__ = [
-    "Opcode", "Funct3", "Funct7", "Funct12", "CSRIndex", "CSRMode", "Cause",
+    "Opcode", "Funct3", "Funct7", "Funct12", "CSRIndex", "Cause",
     "flat_layout", "misa_layout", "mstatus_layout", "mtvec_layout", "mip_layout",
     "mie_layout", "mcause_layout", "dcsr_layout", "tdata1_layout"
 ]
@@ -74,13 +74,6 @@ class CSRIndex:
     # debug module
     DCSR        = 0x7b0
     DPC         = 0x7b1
-
-
-class CSRMode:
-    RW0 = 0b00
-    RW1 = 0b01
-    RW2 = 0b10
-    RO  = 0b11
 
 
 class Cause:
