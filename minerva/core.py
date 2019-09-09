@@ -32,13 +32,13 @@ __all__ = ["Minerva"]
 
 _af_layout = [
     ("pc",      (33, True)),
-    ("misaligned_fetch", 1)
+    ("fetch_misaligned", 1)
 ]
 
 
 _fd_layout = [
     ("pc",               32),
-    ("misaligned_fetch",  1),
+    ("fetch_misaligned",  1),
     ("instruction",      32),
     ("ibus_error",        1)
 ]
@@ -46,9 +46,10 @@ _fd_layout = [
 
 _dx_layout = [
     ("pc",                  32),
-    ("misaligned_fetch",     1),
+    ("fetch_misaligned",     1),
     ("instruction",         32),
     ("ibus_error",           1),
+    ("illegal",              1),
     ("rd",                   5),
     ("rs1",                  5),
     ("rd_we",                1),
@@ -81,12 +82,17 @@ _dx_layout = [
     ("ecall",                1),
     ("ebreak",               1),
     ("mret",                 1),
-    ("illegal",              1)
 ]
 
 
 _xm_layout = [
     ("pc",                  32),
+    ("instruction",         32),
+    ("ibus_error",           1),
+    ("illegal",              1),
+    ("loadstore_misaligned", 1),
+    ("ecall",                1),
+    ("ebreak",               1),
     ("rd",                   5),
     ("rd_we",                1),
     ("bypass_m",             1),
@@ -104,6 +110,10 @@ _xm_layout = [
     ("branch_target",       32),
     ("branch_taken",         1),
     ("branch_predict_taken", 1),
+    ("csr",                  1),
+    ("csr_adr",             12),
+    ("csr_we",               1),
+    ("csr_result",          32),
     ("mret",                 1),
     ("exception",            1)
 ]
@@ -323,9 +333,10 @@ class Minerva(Elaboratable):
                 divider.x_op.eq(x.sink.funct3),
                 divider.x_src1.eq(x.sink.src1),
                 divider.x_src2.eq(x.sink.src2),
-                divider.x_valid.eq(x.sink.valid & ~exception.x_raise),
+                divider.x_valid.eq(x.sink.valid),
                 divider.x_stall.eq(x.stall)
             ]
+
             m.stall_on(divider.m_divide_ongoing)
 
         cpu.d.comb += [
@@ -348,29 +359,32 @@ class Minerva(Elaboratable):
         cpu.d.comb += [
             exception.external_interrupt.eq(self.external_interrupt),
             exception.timer_interrupt.eq(self.timer_interrupt),
-            exception.x_pc.eq(x.sink.pc),
-            exception.x_instruction.eq(x.sink.instruction),
-            exception.x_address.eq(loadstore.x_address),
-            exception.x_ecall.eq(x.sink.ecall),
-            exception.x_misaligned_fetch.eq(x.sink.misaligned_fetch),
-            exception.x_ibus_error.eq(x.sink.ibus_error),
-            exception.x_illegal.eq(x.sink.illegal),
-            exception.x_misaligned_load.eq(loadstore.x_load & loadstore.x_misaligned),
-            exception.x_misaligned_store.eq(loadstore.x_store & loadstore.x_misaligned),
-            exception.x_mret.eq(x.sink.mret),
-            exception.x_stall.eq(x.sink.stall),
-            exception.x_valid.eq(x.valid)
+            exception.m_fetch_misaligned.eq(m.sink.fetch_misaligned),
+            exception.m_fetch_error.eq(m.sink.ibus_error),
+            exception.m_load_misaligned.eq(m.sink.load & m.sink.loadstore_misaligned),
+            exception.m_store_misaligned.eq(m.sink.store & m.sink.loadstore_misaligned),
+            exception.m_branch_target.eq(m.sink.branch_target),
+            exception.m_illegal.eq(m.sink.illegal),
+            exception.m_ecall.eq(m.sink.ecall),
+            exception.m_pc.eq(m.sink.pc),
+            exception.m_instruction.eq(m.sink.instruction),
+            exception.m_result.eq(m.sink.result),
+            exception.m_mret.eq(m.sink.mret),
+            exception.m_stall.eq(m.sink.stall),
+            exception.m_valid.eq(m.valid)
         ]
 
-        x_ebreak = x.sink.ebreak
+        m_ebreak = m.sink.ebreak
         if self.with_debug:
             # If dcsr.ebreakm is set, EBREAK instructions enter Debug Mode.
             # We do not want to raise an exception in this case because Debug Mode
             # should be invisible to software execution.
             m_ebreak &= ~debug.dcsr_ebreakm
         if self.with_trigger:
-            x_ebreak |= trigger.trap
-        cpu.d.comb += exception.x_ebreak.eq(x_ebreak)
+            m_ebreak |= trigger.trap
+        cpu.d.comb += exception.m_ebreak.eq(m_ebreak)
+
+        m.kill_on(m.source.exception & m.source.valid)
 
         cpu.d.comb += [
             loadstore.x_address.eq(adder.result),
@@ -379,7 +393,7 @@ class Minerva(Elaboratable):
             loadstore.x_store_operand.eq(x.sink.src2),
             loadstore.x_mask.eq(x.sink.funct3),
             loadstore.x_stall.eq(x.stall),
-            loadstore.x_valid.eq(x.valid & ~exception.x_raise),
+            loadstore.x_valid.eq(x.valid),
             loadstore.w_address.eq(w.sink.result),
             loadstore.w_load_mask.eq(w.sink.load_mask),
             loadstore.w_load_data.eq(w.sink.load_data)
@@ -393,7 +407,7 @@ class Minerva(Elaboratable):
                 loadstore.m_dbus_sel.eq(m.sink.dbus_sel),
                 loadstore.m_store_data.eq(m.sink.store_data),
                 loadstore.m_stall.eq(m.stall),
-                loadstore.m_valid.eq(m.valid & ~m.sink.exception)
+                loadstore.m_valid.eq(m.valid & ~exception.m_raise)
             ]
 
             x.stall_on((loadstore.x_load | loadstore.x_store) & ~loadstore.x_dcache_select & loadstore.x_valid \
@@ -422,7 +436,10 @@ class Minerva(Elaboratable):
         x_raw_rs2 = Signal()
         m_raw_rs2 = Signal()
         w_raw_rs2 = Signal()
+
         x_raw_csr = Signal()
+        m_raw_csr = Signal()
+
         x_lock = Signal()
         m_lock = Signal()
 
@@ -436,9 +453,10 @@ class Minerva(Elaboratable):
             w_raw_rs2.eq((w.sink.rd == decoder.rs2) & w.sink.rd_we),
 
             x_raw_csr.eq((x.sink.csr_adr == decoder.immediate) & x.sink.csr_we),
+            m_raw_csr.eq((m.sink.csr_adr == decoder.immediate) & m.sink.csr_we),
 
-            x_lock.eq(~x.sink.bypass_x & (decoder.rs1_re & x_raw_rs1 | decoder.rs2_re & x_raw_rs2)),
-            m_lock.eq(~m.sink.bypass_m & (decoder.rs1_re & m_raw_rs1 | decoder.rs2_re & m_raw_rs2))
+            x_lock.eq(~x.sink.bypass_x & (decoder.rs1_re & x_raw_rs1 | decoder.rs2_re & x_raw_rs2) | decoder.csr & x_raw_csr),
+            m_lock.eq(~m.sink.bypass_m & (decoder.rs1_re & m_raw_rs1 | decoder.rs2_re & m_raw_rs2) | decoder.csr & m_raw_csr)
         ]
 
         if self.with_debug:
@@ -486,9 +504,9 @@ class Minerva(Elaboratable):
             cpu.d.comb += x_csr_result.eq(x_csr_src1)
 
         cpu.d.comb += [
-            csrf_wp.en.eq(x.sink.csr & x.sink.csr_we & x.valid & ~exception.x_raise & ~x.stall),
-            csrf_wp.addr.eq(x.sink.csr_adr),
-            csrf_wp.data.eq(x_csr_result)
+            csrf_wp.en.eq(m.sink.csr & m.sink.csr_we & m.valid & ~exception.m_raise & ~m.stall),
+            csrf_wp.addr.eq(m.sink.csr_adr),
+            csrf_wp.data.eq(m.sink.csr_result)
         ]
 
         if self.with_debug:
@@ -500,7 +518,7 @@ class Minerva(Elaboratable):
                 ]
             with cpu.Else():
                 cpu.d.comb += [
-                    gprf_wp.en.eq((w.sink.rd != 0) & w.sink.rd_we & w.valid),
+                    gprf_wp.en.eq((w.sink.rd != 0) & w.sink.rd_we & w.valid & ~w.sink.exception),
                     gprf_wp.addr.eq(w.sink.rd),
                     gprf_wp.data.eq(w_result)
                 ]
@@ -536,10 +554,7 @@ class Minerva(Elaboratable):
             cpu.d.comb += d_src1.eq(gprf_rp1.data)
 
         with cpu.If(decoder.csr):
-            with cpu.If(x_raw_csr & x.valid):
-                cpu.d.comb += d_src2.eq(x_csr_result)
-            with cpu.Else():
-                cpu.d.comb += d_src2.eq(csrf_rp.data)
+            cpu.d.comb += d_src2.eq(csrf_rp.data)
         with cpu.Elif(~decoder.rs2_re):
             cpu.d.comb += d_src2.eq(decoder.immediate)
         with cpu.Elif(decoder.rs2 == 0):
@@ -563,11 +578,12 @@ class Minerva(Elaboratable):
             predict.d_rs1_re.eq(decoder.rs1_re)
         ]
 
-        f.kill_on(x.sink.branch_predict_taken & x.valid & ~exception.x_raise)
+        a.kill_on(predict.d_branch_taken & d.valid)
         for s in a, f:
-            s.kill_on(m.sink.branch_predict_taken & ~fetch.m_branch_taken & m.valid)
+            s.kill_on(m.sink.branch_predict_taken & ~m.sink.branch_taken & m.valid)
         for s in a, f, d:
-            s.kill_on(~m.sink.branch_predict_taken & fetch.m_branch_taken & m.valid)
+            s.kill_on(~m.sink.branch_predict_taken & m.sink.branch_taken & m.valid)
+            s.kill_on((exception.m_raise | m.sink.mret) & m.valid)
 
         # debug unit
 
@@ -631,14 +647,14 @@ class Minerva(Elaboratable):
         with cpu.If(~a.stall):
             cpu.d.sync += [
                 a.source.pc.eq(fetch.a_pc),
-                a.source.misaligned_fetch.eq(fetch.a_misaligned)
+                a.source.fetch_misaligned.eq(fetch.a_misaligned)
             ]
 
         # F/D
         with cpu.If(~f.stall):
             cpu.d.sync += [
                 f.source.pc.eq(f.sink.pc),
-                f.source.misaligned_fetch.eq(f.sink.misaligned_fetch),
+                f.source.fetch_misaligned.eq(f.sink.fetch_misaligned),
                 f.source.instruction.eq(fetch.f_instruction),
                 f.source.ibus_error.eq(fetch.f_ibus_error)
             ]
@@ -647,9 +663,10 @@ class Minerva(Elaboratable):
         with cpu.If(~d.stall):
             cpu.d.sync += [
                 d.source.pc.eq(d.sink.pc),
-                d.source.misaligned_fetch.eq(d.sink.misaligned_fetch),
+                d.source.fetch_misaligned.eq(d.sink.fetch_misaligned),
                 d.source.instruction.eq(d.sink.instruction),
                 d.source.ibus_error.eq(d.sink.ibus_error),
+                d.source.illegal.eq(decoder.illegal),
                 d.source.rd.eq(decoder.rd),
                 d.source.rs1.eq(decoder.rs1),
                 d.source.rd_we.eq(decoder.rd_we),
@@ -676,7 +693,6 @@ class Minerva(Elaboratable):
                 d.source.ecall.eq(decoder.ecall),
                 d.source.ebreak.eq(decoder.ebreak),
                 d.source.mret.eq(decoder.mret),
-                d.source.illegal.eq(decoder.illegal),
                 d.source.src1.eq(d_src1),
                 d.source.src2.eq(d_src2),
                 d.source.branch_predict_taken.eq(predict.d_branch_taken),
@@ -692,8 +708,14 @@ class Minerva(Elaboratable):
         with cpu.If(~x.stall):
             cpu.d.sync += [
                 x.source.pc.eq(x.sink.pc),
+                x.source.instruction.eq(x.sink.instruction),
+                x.source.ibus_error.eq(x.sink.ibus_error),
+                x.source.illegal.eq(x.sink.illegal),
+                x.source.loadstore_misaligned.eq(loadstore.x_misaligned),
+                x.source.ecall.eq(x.sink.ecall),
+                x.source.ebreak.eq(x.sink.ebreak),
                 x.source.rd.eq(x.sink.rd),
-                x.source.rd_we.eq(x.sink.rd_we & ~exception.x_raise),
+                x.source.rd_we.eq(x.sink.rd_we),
                 x.source.bypass_m.eq(x.sink.bypass_m | x.sink.bypass_x),
                 x.source.load.eq(x.sink.load),
                 x.source.load_mask.eq(x.sink.funct3),
@@ -702,12 +724,15 @@ class Minerva(Elaboratable):
                 x.source.store_data.eq(loadstore.x_store_data),
                 x.source.compare.eq(x.sink.compare),
                 x.source.shift.eq(x.sink.shift),
-                x.source.exception.eq(exception.x_raise),
                 x.source.mret.eq(x.sink.mret),
                 x.source.condition_met.eq(compare.condition_met),
                 x.source.branch_taken.eq(x.sink.jump | x.sink.branch & compare.condition_met),
                 x.source.branch_target.eq(Mux(x.sink.jump & x.sink.rs1_re, adder.result[1:] << 1, x.sink.branch_target)),
-                x.source.branch_predict_taken.eq(x.sink.branch_predict_taken & ~exception.x_raise),
+                x.source.branch_predict_taken.eq(x.sink.branch_predict_taken),
+                x.source.csr.eq(x.sink.csr),
+                x.source.csr_adr.eq(x.sink.csr_adr),
+                x.source.csr_we.eq(x.sink.csr_we),
+                x.source.csr_result.eq(x_csr_result),
                 x.source.result.eq(x_result)
             ]
             if self.with_muldiv:
@@ -727,7 +752,7 @@ class Minerva(Elaboratable):
                 m.source.rd_we.eq(m.sink.rd_we),
                 m.source.result.eq(m_result),
                 m.source.multiply.eq(m.sink.multiply),
-                m.source.exception.eq(m.sink.exception)
+                m.source.exception.eq(exception.m_raise)
             ]
 
         return cpu

@@ -24,21 +24,24 @@ class ExceptionUnit(Elaboratable, AutoCSR):
 
         self.external_interrupt = Signal(32)
         self.timer_interrupt = Signal()
-        self.x_pc = Signal(32)
-        self.x_instruction = Signal(32)
-        self.x_address = Signal(32)
-        self.x_ebreak = Signal()
-        self.x_ecall = Signal()
-        self.x_misaligned_fetch = Signal()
-        self.x_misaligned_load = Signal()
-        self.x_misaligned_store = Signal()
-        self.x_ibus_error = Signal()
-        self.x_illegal = Signal()
-        self.x_mret = Signal()
-        self.x_stall = Signal()
-        self.x_valid = Signal()
+        self.m_fetch_misaligned = Signal()
+        self.m_fetch_error = Signal()
+        self.m_load_misaligned = Signal()
+        self.m_load_error = Signal()
+        self.m_store_misaligned = Signal()
+        self.m_store_error = Signal()
+        self.m_branch_target = Signal(32)
+        self.m_illegal = Signal()
+        self.m_ebreak = Signal()
+        self.m_ecall = Signal()
+        self.m_pc = Signal(32)
+        self.m_instruction = Signal(32)
+        self.m_result = Signal(32)
+        self.m_mret = Signal()
+        self.m_stall = Signal()
+        self.m_valid = Signal()
 
-        self.x_raise = Signal()
+        self.m_raise = Signal()
 
     def elaborate(self, platform):
         m = Module()
@@ -49,13 +52,15 @@ class ExceptionUnit(Elaboratable, AutoCSR):
 
         trap_pe = m.submodules.trap_pe = PriorityEncoder(16)
         m.d.comb += [
-            trap_pe.i[Cause.FETCH_MISALIGNED   ].eq(self.x_misaligned_fetch),
-            trap_pe.i[Cause.FETCH_ACCESS_FAULT ].eq(self.x_ibus_error),
-            trap_pe.i[Cause.ILLEGAL_INSTRUCTION].eq(self.x_illegal),
-            trap_pe.i[Cause.BREAKPOINT         ].eq(self.x_ebreak),
-            trap_pe.i[Cause.LOAD_MISALIGNED    ].eq(self.x_misaligned_load),
-            trap_pe.i[Cause.STORE_MISALIGNED   ].eq(self.x_misaligned_store),
-            trap_pe.i[Cause.ECALL_FROM_M       ].eq(self.x_ecall)
+            trap_pe.i[Cause.FETCH_MISALIGNED   ].eq(self.m_fetch_misaligned),
+            trap_pe.i[Cause.FETCH_ACCESS_FAULT ].eq(self.m_fetch_error),
+            trap_pe.i[Cause.ILLEGAL_INSTRUCTION].eq(self.m_illegal),
+            trap_pe.i[Cause.BREAKPOINT         ].eq(self.m_ebreak),
+            trap_pe.i[Cause.LOAD_MISALIGNED    ].eq(self.m_load_misaligned),
+            trap_pe.i[Cause.LOAD_ACCESS_FAULT  ].eq(self.m_load_error),
+            trap_pe.i[Cause.STORE_MISALIGNED   ].eq(self.m_store_misaligned),
+            trap_pe.i[Cause.STORE_ACCESS_FAULT ].eq(self.m_store_error),
+            trap_pe.i[Cause.ECALL_FROM_M       ].eq(self.m_ecall)
         ]
 
         m.d.sync += [
@@ -71,14 +76,14 @@ class ExceptionUnit(Elaboratable, AutoCSR):
             interrupt_pe.i[Cause.M_EXTERNAL_INTERRUPT].eq(self.mip.r.meip & self.mie.r.meie)
         ]
 
-        m.d.comb += self.x_raise.eq(~trap_pe.n | ~interrupt_pe.n & self.mstatus.r.mie)
+        m.d.comb += self.m_raise.eq(~trap_pe.n | ~interrupt_pe.n & self.mstatus.r.mie)
 
-        with m.If(self.x_valid & ~self.x_stall):
-            with m.If(self.x_raise):
+        with m.If(self.m_valid & ~self.m_stall):
+            with m.If(self.m_raise):
                 m.d.sync += [
                     self.mstatus.r.mpie.eq(self.mstatus.r.mie),
                     self.mstatus.r.mie.eq(0),
-                    self.mepc.r.eq(self.x_pc[2:] << 2)
+                    self.mepc.r.eq(self.m_pc[2:] << 2)
                 ]
                 with m.If(~trap_pe.n):
                     m.d.sync += [
@@ -86,12 +91,14 @@ class ExceptionUnit(Elaboratable, AutoCSR):
                         self.mcause.r.interrupt.eq(0)
                     ]
                     with m.Switch(trap_pe.o):
-                        with m.Case(Cause.FETCH_MISALIGNED, Cause.BREAKPOINT):
-                            m.d.sync += self.mtval.r.eq(self.x_pc)
+                        with m.Case(Cause.FETCH_MISALIGNED):
+                            m.d.sync += self.mtval.r.eq(self.m_branch_target)
                         with m.Case(Cause.ILLEGAL_INSTRUCTION):
-                            m.d.sync += self.mtval.r.eq(self.x_instruction)
+                            m.d.sync += self.mtval.r.eq(self.m_instruction)
+                        with m.Case(Cause.BREAKPOINT):
+                            m.d.sync += self.mtval.r.eq(self.m_pc)
                         with m.Case(Cause.LOAD_MISALIGNED, Cause.STORE_MISALIGNED):
-                            m.d.sync += self.mtval.r.eq(self.x_address)
+                            m.d.sync += self.mtval.r.eq(self.m_result)
                         with m.Case():
                             m.d.sync += self.mtval.r.eq(0)
                 with m.Else():
@@ -99,7 +106,7 @@ class ExceptionUnit(Elaboratable, AutoCSR):
                         self.mcause.r.ecode.eq(interrupt_pe.o),
                         self.mcause.r.interrupt.eq(1)
                     ]
-            with m.Elif(self.x_mret):
+            with m.Elif(self.m_mret):
                 m.d.sync += self.mstatus.r.mie.eq(self.mstatus.r.mpie)
 
         return m
