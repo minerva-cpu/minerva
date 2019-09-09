@@ -544,10 +544,6 @@ class Minerva(Elaboratable):
         d_src1 = Signal(32)
         d_src2 = Signal(32)
 
-        w_valid_r = Signal()
-        with cpu.If(~m.stall):
-            cpu.d.sync += w_valid_r.eq(m.valid)
-
         with cpu.If(decoder.lui):
             cpu.d.comb += d_src1.eq(0)
         with cpu.Elif(decoder.auipc):
@@ -558,7 +554,7 @@ class Minerva(Elaboratable):
             cpu.d.comb += d_src1.eq(x_result)
         with cpu.Elif(m_raw_rs1 & m.valid):
             cpu.d.comb += d_src1.eq(m_result)
-        with cpu.Elif(w_raw_rs1 & w_valid_r):
+        with cpu.Elif(w_raw_rs1 & w.valid):
             cpu.d.comb += d_src1.eq(w_result)
         with cpu.Else():
             cpu.d.comb += d_src1.eq(gprf_rp1.data)
@@ -573,7 +569,7 @@ class Minerva(Elaboratable):
             cpu.d.comb += d_src2.eq(x_result)
         with cpu.Elif(m_raw_rs2 & m.valid):
             cpu.d.comb += d_src2.eq(m_result)
-        with cpu.Elif(w_raw_rs2 & w_valid_r):
+        with cpu.Elif(w_raw_rs2 & w.valid):
             cpu.d.comb += d_src2.eq(w_result)
         with cpu.Else():
             cpu.d.comb += d_src2.eq(gprf_rp2.data)
