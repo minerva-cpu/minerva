@@ -454,13 +454,13 @@ class Minerva(Elaboratable):
         m_lock = Signal()
 
         cpu.d.comb += [
-            x_raw_rs1.eq((x.sink.rd == decoder.rs1) & x.sink.rd_we),
-            m_raw_rs1.eq((m.sink.rd == decoder.rs1) & m.sink.rd_we),
-            w_raw_rs1.eq((w.sink.rd == decoder.rs1) & w.sink.rd_we),
+            x_raw_rs1.eq((x.sink.rd != 0) & (x.sink.rd == decoder.rs1) & x.sink.rd_we),
+            m_raw_rs1.eq((m.sink.rd != 0) & (m.sink.rd == decoder.rs1) & m.sink.rd_we),
+            w_raw_rs1.eq((w.sink.rd != 0) & (w.sink.rd == decoder.rs1) & w.sink.rd_we),
 
-            x_raw_rs2.eq((x.sink.rd == decoder.rs2) & x.sink.rd_we),
-            m_raw_rs2.eq((m.sink.rd == decoder.rs2) & m.sink.rd_we),
-            w_raw_rs2.eq((w.sink.rd == decoder.rs2) & w.sink.rd_we),
+            x_raw_rs2.eq((x.sink.rd != 0) & (x.sink.rd == decoder.rs2) & x.sink.rd_we),
+            m_raw_rs2.eq((m.sink.rd != 0) & (m.sink.rd == decoder.rs2) & m.sink.rd_we),
+            w_raw_rs2.eq((w.sink.rd != 0) & (w.sink.rd == decoder.rs2) & w.sink.rd_we),
 
             x_raw_csr.eq((x.sink.csr_adr == decoder.immediate) & x.sink.csr_we),
             m_raw_csr.eq((m.sink.csr_adr == decoder.immediate) & m.sink.csr_we),
