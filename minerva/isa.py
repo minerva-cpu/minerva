@@ -2,8 +2,8 @@ from .csr import *
 
 __all__ = [
     "Opcode", "Funct3", "Funct7", "Funct12", "CSRIndex", "Cause",
-    "flat_layout", "misa_layout", "mstatus_layout", "mtvec_layout", "mip_layout",
-    "mie_layout", "mcause_layout", "dcsr_layout", "tdata1_layout"
+    "flat_layout", "misa_layout", "mstatus_layout", "mtvec_layout", "mepc_layout",
+    "mip_layout", "mie_layout", "mcause_layout", "dcsr_layout", "tdata1_layout"
 ]
 
 class Opcode:
@@ -144,6 +144,12 @@ mstatus_layout = [
 
 mtvec_layout = [
     ("mode",  2, CSRAccess.WARL),
+    ("base", 30, CSRAccess.WARL)
+]
+
+
+mepc_layout = [
+    ("zero",  2, CSRAccess.WIRI),  # 16-bit instructions are not supported
     ("base", 30, CSRAccess.WARL)
 ]
 

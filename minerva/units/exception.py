@@ -15,7 +15,7 @@ class ExceptionUnit(Elaboratable, AutoCSR):
         self.mie         = CSR(0x304, mie_layout, name="mie")
         self.mtvec       = CSR(0x305, mtvec_layout, name="mtvec")
         self.mscratch    = CSR(0x340, flat_layout, name="mscratch") # FIXME move elsewhere
-        self.mepc        = CSR(0x341, flat_layout, name="mepc")
+        self.mepc        = CSR(0x341, mepc_layout, name="mepc")
         self.mcause      = CSR(0x342, mcause_layout, name="mcause")
         self.mtval       = CSR(0x343, flat_layout, name="mtval")
         self.mip         = CSR(0x344, mip_layout, name="mip")
@@ -83,7 +83,7 @@ class ExceptionUnit(Elaboratable, AutoCSR):
                 m.d.sync += [
                     self.mstatus.r.mpie.eq(self.mstatus.r.mie),
                     self.mstatus.r.mie.eq(0),
-                    self.mepc.r.eq(self.m_pc[2:] << 2)
+                    self.mepc.r.base.eq(self.m_pc[2:])
                 ]
                 with m.If(~trap_pe.n):
                     m.d.sync += [

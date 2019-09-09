@@ -264,7 +264,7 @@ class Minerva(Elaboratable):
         with cpu.If(m.sink.exception):
             cpu.d.comb += fetch.m_branch_target.eq(exception.mtvec.r.base << 2)
         with cpu.Elif(m.sink.mret):
-            cpu.d.comb += fetch.m_branch_target.eq(exception.mepc.r.value)
+            cpu.d.comb += fetch.m_branch_target.eq(exception.mepc.r.base << 2)
         with cpu.Else():
             cpu.d.comb += fetch.m_branch_target.eq(m.sink.branch_target)
 
