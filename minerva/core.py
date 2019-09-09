@@ -289,12 +289,22 @@ class Minerva(Elaboratable):
         if self.with_debug:
             with cpu.If(debug.halt & debug.halted):
                 cpu.d.comb += gprf_rp1.addr.eq(debug.gprf_addr)
-            with cpu.Else():
+            with cpu.Elif(~d.stall):
                 cpu.d.comb += gprf_rp1.addr.eq(fetch.f_instruction[15:20])
+            with cpu.Else():
+                cpu.d.comb += gprf_rp1.addr.eq(decoder.rs1)
+
             cpu.d.comb += debug.gprf_dat_r.eq(gprf_rp1.data)
         else:
-            cpu.d.comb += gprf_rp1.addr.eq(fetch.f_instruction[15:20])
-        cpu.d.comb += gprf_rp2.addr.eq(fetch.f_instruction[20:25])
+            with cpu.If(~d.stall):
+                cpu.d.comb += gprf_rp1.addr.eq(fetch.f_instruction[15:20])
+            with cpu.Else():
+                cpu.d.comb += gprf_rp1.addr.eq(decoder.rs1)
+
+        with cpu.If(~d.stall):
+            cpu.d.comb += gprf_rp2.addr.eq(fetch.f_instruction[20:25])
+        with cpu.Else():
+            cpu.d.comb += gprf_rp2.addr.eq(decoder.rs2)
 
         with cpu.If(~f.stall):
             cpu.d.sync += csrf_rp.addr.eq(fetch.f_instruction[20:32])
