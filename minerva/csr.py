@@ -13,13 +13,21 @@ CSRAccess = Enum("CSRAccess", ("WIRI", "WPRI", "WLRL", "WARL"))
 
 
 class CSR():
-    def __init__(self, addr, description, name=None):
-        self.addr = addr
-        self.access = OrderedDict()
+    def __init__(self, addr, description, name):
         fields = []
+        mask = 0
+        offset = 0
         for name, shape, access in description:
+            if isinstance(shape, int):
+                shape = shape, False
+            nbits, signed = shape
             fields.append((name, shape))
-            self.access[name] = access
+            if access in {CSRAccess.WLRL, CSRAccess.WARL}:
+                mask |= ((1 << nbits) - 1) << offset
+            offset += nbits
+
+        self.addr = addr
+        self.rmask = self.wmask = Const(mask)
         self.r = Record(fields)
         self.w = Record(fields)
         self.re = Signal()
@@ -65,38 +73,22 @@ class CSRFile(Elaboratable):
     def elaborate(self, platform):
         m = Module()
 
-        def do_read(csr, rp):
-            dat_r = Record.like(csr.r)
-            m.d.comb += rp.data.eq(dat_r)
-            for name, field in csr.r.fields.items():
-                access = csr.access[name]
-                if access in {CSRAccess.WLRL, CSRAccess.WARL}:
-                    m.d.comb += dat_r[name].eq(field)
-                else:
-                    m.d.comb += dat_r[name].eq(Const(0))
-            m.d.comb += csr.re.eq(rp.en)
-
-        def do_write(csr, wp):
-            dat_w = Record.like(csr.w)
-            m.d.comb += dat_w.eq(wp.data)
-            for name, field in csr.w.fields.items():
-                access = csr.access[name]
-                if access in {CSRAccess.WLRL, CSRAccess.WARL}:
-                    m.d.comb += field.eq(dat_w[name])
-                else:
-                    m.d.comb += field.eq(csr.r[name])
-            m.d.comb += csr.we.eq(wp.en)
-
         for rp in self._read_ports:
             with m.Switch(rp.addr):
                 for addr, csr in self._csr_map.items():
                     with m.Case(addr):
-                        do_read(csr, rp)
+                        m.d.comb += [
+                            csr.re.eq(rp.en),
+                            rp.data.eq(csr.r & csr.rmask)
+                        ]
 
         for wp in self._write_ports:
             with m.Switch(wp.addr):
                 for addr, csr in self._csr_map.items():
                     with m.Case(addr):
-                        do_write(csr, wp)
+                        m.d.comb += [
+                            csr.we.eq(wp.en),
+                            csr.w.eq(wp.data & csr.wmask)
+                        ]
 
         return m
