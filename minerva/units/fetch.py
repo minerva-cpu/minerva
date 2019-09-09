@@ -120,7 +120,7 @@ class CachedFetchUnit(FetchUnitInterface, Elaboratable):
     def elaborate(self, platform):
         m = Module()
 
-        icache = m.submodules.icache = L1CacheV2(*self.icache_args)
+        icache = m.submodules.icache = L1Cache(*self.icache_args)
 
         a_icache_select = Signal()
         f_icache_select = Signal()

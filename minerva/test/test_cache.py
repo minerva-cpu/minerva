@@ -3,7 +3,7 @@ from nmigen.tools import log2_int
 from nmigen.test.tools import *
 from nmigen.asserts import *
 
-from ..cache import L1CacheV2 as L1Cache
+from ..cache import L1Cache
 
 
 class L1CacheSpec(Elaboratable):

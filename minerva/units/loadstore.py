@@ -151,7 +151,7 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
     def elaborate(self, platform):
         m = Module()
 
-        dcache = m.submodules.dcache = L1CacheV2(*self.dcache_args)
+        dcache = m.submodules.dcache = L1Cache(*self.dcache_args)
 
         x_dcache_select = Signal()
         m_dcache_select = Signal()
