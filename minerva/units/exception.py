@@ -31,6 +31,7 @@ class ExceptionUnit(Elaboratable, AutoCSR):
         self.m_load_error = Signal()
         self.m_store_misaligned = Signal()
         self.m_store_error = Signal()
+        self.m_loadstore_badaddr = Signal(30)
         self.m_branch_target = Signal(32)
         self.m_illegal = Signal()
         self.m_ebreak = Signal()
@@ -102,6 +103,8 @@ class ExceptionUnit(Elaboratable, AutoCSR):
                             m.d.sync += self.mtval.r.eq(self.m_pc)
                         with m.Case(Cause.LOAD_MISALIGNED, Cause.STORE_MISALIGNED):
                             m.d.sync += self.mtval.r.eq(self.m_result)
+                        with m.Case(Cause.LOAD_ACCESS_FAULT, Cause.STORE_ACCESS_FAULT):
+                            m.d.sync += self.mtval.r.eq(self.m_loadstore_badaddr << 2)
                         with m.Case():
                             m.d.sync += self.mtval.r.eq(0)
                 with m.Else():

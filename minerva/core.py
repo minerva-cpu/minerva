@@ -96,12 +96,11 @@ _xm_layout = [
     ("rd",                   5),
     ("rd_we",                1),
     ("bypass_m",             1),
+    ("funct3",               3),
     ("result",              32),
     ("shift",                1),
     ("load",                 1),
-    ("load_mask",            3),
     ("store",                1),
-    ("dbus_sel",             4),
     ("store_data",          32),
     ("compare",              1),
     ("multiply",             1),
@@ -123,9 +122,9 @@ _mw_layout = [
     ("pc",                32),
     ("rd",                 5),
     ("rd_we",              1),
+    ("funct3",             3),
     ("result",            32),
     ("load",               1),
-    ("load_mask",          3),
     ("load_data",         32),
     ("multiply",           1),
     ("exception",          1)
@@ -138,8 +137,7 @@ class Minerva(Elaboratable):
                 with_icache=True,
                 icache_nways=1, icache_nlines=256, icache_nwords=8, icache_base=0, icache_limit=2**31,
                 with_dcache=True,
-                dcache_nb_ways=1, dcache_nb_lines=256, dcache_nb_words=8,
-                dcache_base=0, dcache_limit=2**31,
+                dcache_nways=1, dcache_nlines=256, dcache_nwords=8, dcache_base=0, dcache_limit=2**31,
                 with_muldiv=True,
                 with_debug=False,
                 with_trigger=False, nb_triggers=8):
@@ -162,7 +160,7 @@ class Minerva(Elaboratable):
         self.with_icache   = with_icache
         self.icache_args   = icache_nways, icache_nlines, icache_nwords, icache_base, icache_limit
         self.with_dcache   = with_dcache
-        self.dcache_args   = dcache_nways, dcache_nb_lines, dcache_nb_words, dcache_base, dcache_limit
+        self.dcache_args   = dcache_nways, dcache_nlines, dcache_nwords, dcache_base, dcache_limit
         self.with_muldiv   = with_muldiv
         self.with_debug    = with_debug
         self.with_trigger  = with_trigger
@@ -199,6 +197,7 @@ class Minerva(Elaboratable):
         # units
 
         pc_sel    = cpu.submodules.pc_sel    = PCSelector()
+        data_sel  = cpu.submodules.data_sel  = DataSelector()
         adder     = cpu.submodules.adder     = Adder()
         compare   = cpu.submodules.compare   = CompareUnit()
         decoder   = cpu.submodules.decoder   = InstructionDecoder(self.with_muldiv)
@@ -215,7 +214,7 @@ class Minerva(Elaboratable):
         if self.with_dcache:
             loadstore = cpu.submodules.loadstore = CachedLoadStoreUnit(*self.dcache_args)
         else:
-            loadstore = cpu.submodules.loadstore = SimpleLoadStoreUnit()
+            loadstore = cpu.submodules.loadstore = BareLoadStoreUnit()
 
         if self.with_muldiv:
             multiplier = cpu.submodules.multiplier = Multiplier()
@@ -372,7 +371,10 @@ class Minerva(Elaboratable):
             exception.m_fetch_error.eq(m.sink.fetch_error),
             exception.m_fetch_badaddr.eq(m.sink.fetch_badaddr),
             exception.m_load_misaligned.eq(m.sink.load & m.sink.loadstore_misaligned),
+            exception.m_load_error.eq(loadstore.m_load_error),
             exception.m_store_misaligned.eq(m.sink.store & m.sink.loadstore_misaligned),
+            exception.m_store_error.eq(loadstore.m_store_error),
+            exception.m_loadstore_badaddr.eq(loadstore.m_badaddr),
             exception.m_branch_target.eq(m.sink.branch_target),
             exception.m_illegal.eq(m.sink.illegal),
             exception.m_ecall.eq(m.sink.ecall),
@@ -397,38 +399,40 @@ class Minerva(Elaboratable):
         m.kill_on(m.source.exception & m.source.valid)
 
         cpu.d.comb += [
-            loadstore.x_address.eq(adder.result),
-            loadstore.x_load.eq(x.sink.load),
-            loadstore.x_store.eq(x.sink.store),
-            loadstore.x_store_operand.eq(x.sink.src2),
-            loadstore.x_mask.eq(x.sink.funct3),
-            loadstore.x_stall.eq(x.stall),
-            loadstore.x_valid.eq(x.valid),
-            loadstore.w_address.eq(w.sink.result),
-            loadstore.w_load_mask.eq(w.sink.load_mask),
-            loadstore.w_load_data.eq(w.sink.load_data)
+            data_sel.x_offset.eq(adder.result[:2]),
+            data_sel.x_funct3.eq(x.sink.funct3),
+            data_sel.x_store_operand.eq(x.sink.src2),
+            data_sel.w_offset.eq(w.sink.result[:2]),
+            data_sel.w_funct3.eq(w.sink.funct3),
+            data_sel.w_load_data.eq(w.sink.load_data)
         ]
 
+        cpu.d.comb += [
+            loadstore.x_addr.eq(adder.result),
+            loadstore.x_mask.eq(data_sel.x_mask),
+            loadstore.x_load.eq(x.sink.load),
+            loadstore.x_store.eq(x.sink.store),
+            loadstore.x_store_data.eq(data_sel.x_store_data),
+            loadstore.x_stall.eq(x.stall),
+            loadstore.x_valid.eq(x.valid),
+            loadstore.m_stall.eq(m.stall),
+            loadstore.m_valid.eq(m.valid)
+        ]
+
+        m.stall_on(loadstore.x_busy & x.valid)
+        m.stall_on(loadstore.m_busy & m.valid)
+
         if self.with_dcache:
+            if self.with_debug:
+                cpu.d.comb += loadstore.x_flush.eq(debug.resumereq)
+
             cpu.d.comb += [
-                loadstore.m_address.eq(m.sink.result),
+                loadstore.m_addr.eq(m.sink.result),
                 loadstore.m_load.eq(m.sink.load),
                 loadstore.m_store.eq(m.sink.store),
-                loadstore.m_dbus_sel.eq(m.sink.dbus_sel),
-                loadstore.m_store_data.eq(m.sink.store_data),
-                loadstore.m_stall.eq(m.stall),
-                loadstore.m_valid.eq(m.valid & ~exception.m_raise)
             ]
 
-            x.stall_on((loadstore.x_load | loadstore.x_store) & ~loadstore.x_dcache_select & loadstore.x_valid \
-                    & (self.dbus.cyc | loadstore.wrbuf.readable | loadstore.dcache.refill_request))
-            m.stall_on(loadstore.m_load & ~loadstore.m_dcache_select & loadstore.m_valid & self.dbus.cyc)
-            m.stall_on((loadstore.m_store | loadstore.m_load) & ~loadstore.m_dcache_select & loadstore.m_valid \
-                    & loadstore.wrbuf.readable)
-            m.stall_on(loadstore.m_store & loadstore.m_dcache_select & loadstore.m_valid & ~loadstore.wrbuf.writable)
-            m.stall_on(loadstore.dcache.stall_request)
-        else:
-            m.stall_on(self.dbus.cyc)
+            x.stall_on(loadstore.x_busy & x.valid)
 
         if self.with_debug:
             with cpu.If(debug.halt & debug.halted):
@@ -501,7 +505,7 @@ class Minerva(Elaboratable):
             cpu.d.comb += m_result.eq(m.sink.result)
 
         with cpu.If(w.sink.load):
-            cpu.d.comb += w_result.eq(loadstore.w_load_result)
+            cpu.d.comb += w_result.eq(data_sel.w_load_result)
         if self.with_muldiv:
             with cpu.Elif(w.sink.multiply):
                 cpu.d.comb += w_result.eq(multiplier.w_result)
@@ -631,8 +635,6 @@ class Minerva(Elaboratable):
                 s.kill_on(debug.killall)
 
             halted = x.stall & ~reduce(or_, (s.valid for s in (m, w)))
-            if self.with_dcache:
-                halted &= ~loadstore.wrbuf.readable
             cpu.d.sync += debug.halted.eq(halted)
 
             with cpu.If(debug.resumereq):
@@ -717,16 +719,15 @@ class Minerva(Elaboratable):
                 x.source.fetch_error.eq(x.sink.fetch_error),
                 x.source.fetch_badaddr.eq(x.sink.fetch_badaddr),
                 x.source.illegal.eq(x.sink.illegal),
-                x.source.loadstore_misaligned.eq(loadstore.x_misaligned),
+                x.source.loadstore_misaligned.eq(data_sel.x_misaligned),
                 x.source.ecall.eq(x.sink.ecall),
                 x.source.ebreak.eq(x.sink.ebreak),
                 x.source.rd.eq(x.sink.rd),
                 x.source.rd_we.eq(x.sink.rd_we),
                 x.source.bypass_m.eq(x.sink.bypass_m | x.sink.bypass_x),
+                x.source.funct3.eq(x.sink.funct3),
                 x.source.load.eq(x.sink.load),
-                x.source.load_mask.eq(x.sink.funct3),
                 x.source.store.eq(x.sink.store),
-                x.source.dbus_sel.eq(loadstore.x_dbus_sel),
                 x.source.store_data.eq(loadstore.x_store_data),
                 x.source.compare.eq(x.sink.compare),
                 x.source.shift.eq(x.sink.shift),
@@ -753,7 +754,7 @@ class Minerva(Elaboratable):
                 m.source.pc.eq(m.sink.pc),
                 m.source.rd.eq(m.sink.rd),
                 m.source.load.eq(m.sink.load),
-                m.source.load_mask.eq(m.sink.load_mask),
+                m.source.funct3.eq(m.sink.funct3),
                 m.source.load_data.eq(loadstore.m_load_data),
                 m.source.rd_we.eq(m.sink.rd_we),
                 m.source.result.eq(m_result),
