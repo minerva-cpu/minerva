@@ -26,6 +26,7 @@ class ExceptionUnit(Elaboratable, AutoCSR):
         self.timer_interrupt = Signal()
         self.m_fetch_misaligned = Signal()
         self.m_fetch_error = Signal()
+        self.m_fetch_badaddr = Signal(30)
         self.m_load_misaligned = Signal()
         self.m_load_error = Signal()
         self.m_store_misaligned = Signal()
@@ -93,6 +94,8 @@ class ExceptionUnit(Elaboratable, AutoCSR):
                     with m.Switch(trap_pe.o):
                         with m.Case(Cause.FETCH_MISALIGNED):
                             m.d.sync += self.mtval.r.eq(self.m_branch_target)
+                        with m.Case(Cause.FETCH_ACCESS_FAULT):
+                            m.d.sync += self.mtval.r.eq(self.m_fetch_badaddr << 2)
                         with m.Case(Cause.ILLEGAL_INSTRUCTION):
                             m.d.sync += self.mtval.r.eq(self.m_instruction)
                         with m.Case(Cause.BREAKPOINT):

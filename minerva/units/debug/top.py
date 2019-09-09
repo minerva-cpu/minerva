@@ -36,8 +36,12 @@ class DebugUnit(Elaboratable, AutoCSR):
 
         self.m_branch_taken = Signal()
         self.m_branch_target = Signal(32)
+        self.m_mret = Signal()
+        self.m_exception = Signal()
         self.m_pc = Signal(32)
         self.m_valid = Signal()
+        self.mepc_r_base = Signal(30)
+        self.mtvec_r_base = Signal(30)
 
         self.dcsr_step = Signal()
         self.dcsr_ebreakm = Signal()

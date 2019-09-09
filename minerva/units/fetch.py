@@ -1,153 +1,203 @@
 from nmigen import *
+from nmigen.tools import log2_int
 
-from ..cache import L1Cache
-from ..wishbone import Cycle, wishbone_layout
-
-
-__all__ = ["SimpleFetchUnit", "CachedFetchUnit"]
+from ..cache import *
+from ..wishbone import *
 
 
-class _FetchUnitBase(Elaboratable):
+__all__ = ["PCSelector", "FetchUnitInterface", "BareFetchUnit", "CachedFetchUnit"]
+
+
+class PCSelector(Elaboratable):
     def __init__(self):
-        self.ibus = Record(wishbone_layout)
-
-        self.a_stall = Signal()
         self.f_pc = Signal(32)
-        self.f_stall = Signal()
+        self.d_pc = Signal(32)
         self.d_branch_predict_taken = Signal()
         self.d_branch_target = Signal(32)
         self.d_valid = Signal()
         self.x_pc = Signal(32)
+        self.x_fence_i = Signal()
+        self.x_valid = Signal()
+        self.m_branch_predict_taken = Signal()
         self.m_branch_taken = Signal()
         self.m_branch_target = Signal(32)
-        self.m_branch_predict_taken = Signal()
+        self.m_exception = Signal()
+        self.m_mret = Signal()
         self.m_valid = Signal()
+        self.mtvec_r_base = Signal(30)
+        self.mepc_r_base = Signal(30)
 
         self.a_pc = Signal(32)
-        self.a_misaligned = Signal()
-        self.f_instruction = Signal(32)
-        self.f_ibus_error = Signal()
 
     def elaborate(self, platform):
         m = Module()
 
-        with m.If(self.d_branch_predict_taken & self.d_valid):
-            m.d.comb += [
-                self.a_pc.eq(self.d_branch_target),
-                self.a_misaligned.eq(self.d_branch_target[:2].bool())
-            ]
+        with m.If(self.m_exception & self.m_valid):
+            m.d.comb += self.a_pc.eq(self.mtvec_r_base << 2)
+        with m.Elif(self.m_mret & self.m_valid):
+            m.d.comb += self.a_pc.eq(self.mepc_r_base << 2)
         with m.Elif(self.m_branch_predict_taken & ~self.m_branch_taken & self.m_valid):
             m.d.comb += self.a_pc.eq(self.x_pc)
         with m.Elif(~self.m_branch_predict_taken & self.m_branch_taken & self.m_valid):
-            m.d.comb += [
-                self.a_pc.eq(self.m_branch_target),
-                self.a_misaligned.eq(self.m_branch_target[:2].bool())
-            ]
+            m.d.comb += self.a_pc.eq(self.m_branch_target),
+        with m.Elif(self.d_branch_predict_taken & self.d_valid):
+            m.d.comb += self.a_pc.eq(self.d_branch_target),
         with m.Else():
             m.d.comb += self.a_pc.eq(self.f_pc + 4)
 
         return m
 
 
-class SimpleFetchUnit(_FetchUnitBase):
+class FetchUnitInterface:
+    def __init__(self):
+        self.ibus = Record(wishbone_layout)
+
+        self.a_pc = Signal(32)
+        self.a_stall = Signal()
+        self.a_valid = Signal()
+        self.f_stall = Signal()
+        self.f_valid = Signal()
+
+        self.a_busy = Signal()
+        self.f_busy = Signal()
+        self.f_instruction = Signal(32)
+        self.f_fetch_error = Signal()
+        self.f_badaddr = Signal(30)
+
+
+class BareFetchUnit(FetchUnitInterface, Elaboratable):
     def elaborate(self, platform):
         m = Module()
-        m.submodules += super().elaborate(platform)
 
-        f_instruction   = Signal(32)
-        f_instruction_r = Signal(32)
-        f_ibus_error    = Signal()
-        f_ibus_error_r  = Signal()
-
-        m.d.comb += [
-            self.f_instruction.eq(Mux(self.f_stall, f_instruction_r, f_instruction)),
-            self.f_ibus_error.eq(Mux(self.f_stall, f_ibus_error_r, f_ibus_error))
-        ]
-
+        ibus_rdata = Signal.like(self.ibus.dat_r)
         with m.If(self.ibus.cyc):
-            with m.If(self.ibus.ack | self.ibus.err):
+            with m.If(self.ibus.ack | self.ibus.err | ~self.f_valid):
                 m.d.sync += [
                     self.ibus.cyc.eq(0),
                     self.ibus.stb.eq(0),
-                    f_instruction.eq(self.ibus.dat_r),
-                    f_ibus_error.eq(self.ibus.err)
+                    ibus_rdata.eq(self.ibus.dat_r)
                 ]
-        with m.Elif(~self.a_stall):
+        with m.Elif(self.a_valid & ~self.a_stall):
             m.d.sync += [
                 self.ibus.adr.eq(self.a_pc[2:]),
                 self.ibus.cyc.eq(1),
-                self.ibus.stb.eq(1),
-                f_instruction_r.eq(f_instruction),
-                f_ibus_error_r.eq(f_ibus_error)
+                self.ibus.stb.eq(1)
+            ]
+
+        with m.If(self.ibus.cyc & self.ibus.err):
+            m.d.sync += [
+                self.f_fetch_error.eq(1),
+                self.f_badaddr.eq(self.ibus.adr)
+            ]
+        with m.Elif(~self.f_stall):
+            m.d.sync += self.f_fetch_error.eq(0)
+
+        m.d.comb += self.a_busy.eq(self.ibus.cyc)
+
+        with m.If(self.f_fetch_error):
+            m.d.comb += [
+                self.f_busy.eq(0),
+                self.f_instruction.eq(0x00000013) # nop (addi x0, x0, 0)
+            ]
+        with m.Else():
+            m.d.comb += [
+                self.f_busy.eq(self.ibus.cyc),
+                self.f_instruction.eq(ibus_rdata)
             ]
 
         return m
 
 
-class CachedFetchUnit(_FetchUnitBase):
+class CachedFetchUnit(FetchUnitInterface, Elaboratable):
     def __init__(self, *icache_args):
         super().__init__()
 
-        self.f_valid = Signal()
+        self.icache_args = icache_args
 
-        self.icache = L1Cache(*icache_args)
+        self.a_flush = Signal()
+        self.f_pc = Signal(32)
 
     def elaborate(self, platform):
         m = Module()
-        m.submodules += super().elaborate(platform)
 
-        icache = m.submodules.icache = self.icache
+        icache = m.submodules.icache = L1CacheV2(*self.icache_args)
+
+        a_icache_select = Signal()
+        f_icache_select = Signal()
+
+        m.d.comb += a_icache_select.eq((self.a_pc >= icache.base) & (self.a_pc < icache.limit))
+        with m.If(~self.a_stall):
+            m.d.sync += f_icache_select.eq(a_icache_select)
+
         m.d.comb += [
-            icache.s1_address.eq(self.a_pc[2:]),
+            icache.s1_addr.eq(self.a_pc[2:]),
+            icache.s1_flush.eq(self.a_flush),
             icache.s1_stall.eq(self.a_stall),
-            icache.s2_address.eq(self.f_pc[2:]),
-            icache.s2_stall.eq(self.f_stall),
-            icache.s2_re.eq(self.f_valid)
+            icache.s1_valid.eq(self.a_valid & a_icache_select),
+            icache.s2_addr.eq(self.f_pc[2:]),
+            icache.s2_re.eq(Const(1)),
+            icache.s2_evict.eq(Const(0)),
+            icache.s2_valid.eq(self.f_valid & f_icache_select)
         ]
 
-        f_instruction_r = Signal(32)
-        with m.If(icache.s2_re & ~self.f_stall):
-            m.d.sync += f_instruction_r.eq(icache.s2_dat_r)
-        with m.If(self.f_stall):
-            m.d.comb += self.f_instruction.eq(f_instruction_r)
-        with m.Else():
-            m.d.comb += self.f_instruction.eq(icache.s2_dat_r)
+        ibus_arbiter = m.submodules.ibus_arbiter = WishboneArbiter()
+        m.d.comb += ibus_arbiter.bus.connect(self.ibus)
 
-        next_offset = Signal(icache.offsetbits)
-        last_offset = Signal(icache.offsetbits)
-        next_cti = Signal(3)
+        icache_port = ibus_arbiter.port(priority=0)
         m.d.comb += [
-            next_offset.eq(self.ibus.adr[:icache.offsetbits]+1),
-            next_cti.eq(Mux(next_offset == last_offset, Cycle.END, Cycle.INCREMENT)),
-            self.ibus.bte.eq(icache.offsetbits-1)
+            icache_port.cyc.eq(icache.bus_re),
+            icache_port.stb.eq(icache.bus_re),
+            icache_port.adr.eq(icache.bus_addr),
+            icache_port.cti.eq(Mux(icache.bus_last, Cycle.END, Cycle.INCREMENT)),
+            icache_port.bte.eq(Const(log2_int(icache.nwords) - 1)),
+            icache.bus_valid.eq(icache_port.ack),
+            icache.bus_error.eq(icache_port.err),
+            icache.bus_rdata.eq(icache_port.dat_r)
         ]
 
-        m.d.sync += [
-            icache.refill_address.eq(self.ibus.adr),
-            icache.refill_data.eq(self.ibus.dat_r),
-            icache.refill_valid.eq(self.ibus.cyc & self.ibus.ack),
-            icache.last_refill.eq(self.ibus.adr[:icache.offsetbits] == last_offset)
-        ]
-
-        with m.If(self.ibus.cyc):
-            with m.If(self.ibus.ack | self.ibus.err):
-                with m.If(self.ibus.cti == Cycle.END):
-                    m.d.sync += [
-                        self.ibus.cyc.eq(0),
-                        self.ibus.stb.eq(0)
-                    ]
+        bare_port = ibus_arbiter.port(priority=1)
+        bare_rdata = Signal.like(bare_port.dat_r)
+        with m.If(bare_port.cyc):
+            with m.If(bare_port.ack | bare_port.err | ~self.f_valid):
                 m.d.sync += [
-                    self.ibus.adr[:icache.offsetbits].eq(next_offset),
-                    self.ibus.cti.eq(next_cti)
+                    bare_port.cyc.eq(0),
+                    bare_port.stb.eq(0),
+                    bare_rdata.eq(bare_port.dat_r)
                 ]
-            m.d.sync += self.f_ibus_error.eq(self.ibus.err)
-        with m.Elif(icache.refill_request):
+        with m.Elif(~a_icache_select & self.a_valid & ~self.a_stall):
             m.d.sync += [
-                last_offset.eq(icache.s2_address[:icache.offsetbits]-1),
-                self.ibus.adr.eq(icache.s2_address),
-                self.ibus.cti.eq(Cycle.INCREMENT),
-                self.ibus.cyc.eq(1),
-                self.ibus.stb.eq(1)
+                bare_port.cyc.eq(1),
+                bare_port.stb.eq(1),
+                bare_port.adr.eq(self.a_pc[2:])
+            ]
+
+        with m.If(self.ibus.cyc & self.ibus.err):
+            m.d.sync += [
+                self.f_fetch_error.eq(1),
+                self.f_badaddr.eq(self.ibus.adr)
+            ]
+        with m.Elif(~self.f_stall):
+            m.d.sync += self.f_fetch_error.eq(0)
+
+        with m.If(a_icache_select):
+            m.d.comb += self.a_busy.eq(0)
+        with m.Else():
+            m.d.comb += self.a_busy.eq(bare_port.cyc)
+
+        with m.If(self.f_fetch_error):
+            m.d.comb += [
+                self.f_busy.eq(0),
+                self.f_instruction.eq(0x00000013) # nop (addi x0, x0, 0)
+            ]
+        with m.Elif(f_icache_select):
+            m.d.comb += [
+                self.f_busy.eq(icache.s2_miss),
+                self.f_instruction.eq(icache.s2_rdata)
+            ]
+        with m.Else():
+            m.d.comb += [
+                self.f_busy.eq(bare_port.cyc),
+                self.f_instruction.eq(bare_rdata)
             ]
 
         return m

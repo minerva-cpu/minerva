@@ -32,23 +32,22 @@ __all__ = ["Minerva"]
 
 _af_layout = [
     ("pc",      (33, True)),
-    ("fetch_misaligned", 1)
 ]
 
 
 _fd_layout = [
     ("pc",               32),
-    ("fetch_misaligned",  1),
     ("instruction",      32),
-    ("ibus_error",        1)
+    ("fetch_error",       1),
+    ("fetch_badaddr",    30)
 ]
 
 
 _dx_layout = [
     ("pc",                  32),
-    ("fetch_misaligned",     1),
     ("instruction",         32),
-    ("ibus_error",           1),
+    ("fetch_error",          1),
+    ("fetch_badaddr",       30),
     ("illegal",              1),
     ("rd",                   5),
     ("rs1",                  5),
@@ -88,7 +87,8 @@ _dx_layout = [
 _xm_layout = [
     ("pc",                  32),
     ("instruction",         32),
-    ("ibus_error",           1),
+    ("fetch_error",          1),
+    ("fetch_badaddr",       30),
     ("illegal",              1),
     ("loadstore_misaligned", 1),
     ("ecall",                1),
@@ -136,8 +136,7 @@ class Minerva(Elaboratable):
     def __init__(self, reset_address=0x00000000,
                 as_instance=False,
                 with_icache=True,
-                icache_nb_ways=1, icache_nb_lines=256, icache_nb_words=8,
-                icache_base=0, icache_limit=2**31,
+                icache_nways=1, icache_nlines=256, icache_nwords=8, icache_base=0, icache_limit=2**31,
                 with_dcache=True,
                 dcache_nb_ways=1, dcache_nb_lines=256, dcache_nb_words=8,
                 dcache_base=0, dcache_limit=2**31,
@@ -161,7 +160,7 @@ class Minerva(Elaboratable):
         self.reset_address = reset_address
         self.as_instance   = as_instance
         self.with_icache   = with_icache
-        self.icache_args   = icache_nways, icache_nb_lines, icache_nb_words, icache_base, icache_limit
+        self.icache_args   = icache_nways, icache_nlines, icache_nwords, icache_base, icache_limit
         self.with_dcache   = with_dcache
         self.dcache_args   = dcache_nways, dcache_nb_lines, dcache_nb_words, dcache_base, dcache_limit
         self.with_muldiv   = with_muldiv
@@ -199,6 +198,7 @@ class Minerva(Elaboratable):
 
         # units
 
+        pc_sel    = cpu.submodules.pc_sel    = PCSelector()
         adder     = cpu.submodules.adder     = Adder()
         compare   = cpu.submodules.compare   = CompareUnit()
         decoder   = cpu.submodules.decoder   = InstructionDecoder(self.with_muldiv)
@@ -210,7 +210,7 @@ class Minerva(Elaboratable):
         if self.with_icache:
             fetch = cpu.submodules.fetch = CachedFetchUnit(*self.icache_args)
         else:
-            fetch = cpu.submodules.fetch = SimpleFetchUnit()
+            fetch = cpu.submodules.fetch = BareFetchUnit()
 
         if self.with_dcache:
             loadstore = cpu.submodules.loadstore = CachedLoadStoreUnit(*self.dcache_args)
@@ -248,39 +248,38 @@ class Minerva(Elaboratable):
         # pipeline logic
 
         cpu.d.comb += [
-            fetch.ibus.connect(self.ibus),
-            fetch.a_stall.eq(a.stall),
-            fetch.f_pc.eq(f.sink.pc),
-            fetch.f_stall.eq(f.stall),
-            fetch.d_branch_predict_taken.eq(predict.d_branch_taken),
-            fetch.d_branch_target.eq(predict.d_branch_target),
-            fetch.d_valid.eq(d.valid),
-            fetch.x_pc.eq(x.sink.pc),
-            fetch.m_branch_predict_taken.eq(m.sink.branch_predict_taken),
-            fetch.m_branch_taken.eq(m.sink.branch_taken | m.sink.exception | m.sink.mret),
-            fetch.m_valid.eq(m.valid)
+            pc_sel.f_pc.eq(f.sink.pc),
+            pc_sel.d_branch_predict_taken.eq(predict.d_branch_taken & ~predict.d_fetch_misaligned),
+            pc_sel.d_branch_target.eq(predict.d_branch_target),
+            pc_sel.d_valid.eq(d.valid),
+            pc_sel.x_pc.eq(x.sink.pc),
+            pc_sel.m_branch_predict_taken.eq(m.sink.branch_predict_taken),
+            pc_sel.m_branch_taken.eq(m.sink.branch_taken),
+            pc_sel.m_branch_target.eq(m.sink.branch_target),
+            pc_sel.m_exception.eq(exception.m_raise),
+            pc_sel.m_mret.eq(m.sink.mret),
+            pc_sel.m_valid.eq(m.valid),
+            pc_sel.mtvec_r_base.eq(exception.mtvec.r.base),
+            pc_sel.mepc_r_base.eq(exception.mepc.r.base)
         ]
 
-        with cpu.If(m.sink.exception):
-            cpu.d.comb += fetch.m_branch_target.eq(exception.mtvec.r.base << 2)
-        with cpu.Elif(m.sink.mret):
-            cpu.d.comb += fetch.m_branch_target.eq(exception.mepc.r.base << 2)
-        with cpu.Else():
-            cpu.d.comb += fetch.m_branch_target.eq(m.sink.branch_target)
+        cpu.d.comb += [
+            fetch.a_pc.eq(pc_sel.a_pc),
+            fetch.a_stall.eq(a.stall),
+            fetch.a_valid.eq(a.valid),
+            fetch.f_stall.eq(f.stall),
+            fetch.f_valid.eq(f.valid),
+            fetch.ibus.connect(self.ibus)
+        ]
+
+        m.stall_on(fetch.a_busy & a.valid)
+        m.stall_on(fetch.f_busy & f.valid)
 
         if self.with_icache:
             cpu.d.comb += [
-                fetch.f_valid.eq(f.valid),
-                fetch.icache.refill_ready.eq(~loadstore.dcache.stall_request if self.with_dcache else Const(1))
+                fetch.a_flush.eq(Const(0)),
+                fetch.f_pc.eq(f.sink.pc)
             ]
-
-            fetch.icache.flush_on(x.sink.fence_i & x.valid)
-
-            x.stall_on(fetch.icache.stall_request)
-            m.stall_on(fetch.icache.stall_request & (fetch.m_branch_predict_taken != fetch.m_branch_taken) & m.valid)
-            m.stall_on(self.ibus.cyc & fetch.m_branch_taken & m.valid)
-        else:
-            m.stall_on(self.ibus.cyc)
 
         cpu.d.comb += [
             decoder.instruction.eq(d.sink.instruction)
@@ -369,8 +368,9 @@ class Minerva(Elaboratable):
         cpu.d.comb += [
             exception.external_interrupt.eq(self.external_interrupt),
             exception.timer_interrupt.eq(self.timer_interrupt),
-            exception.m_fetch_misaligned.eq(m.sink.fetch_misaligned),
-            exception.m_fetch_error.eq(m.sink.ibus_error),
+            exception.m_fetch_misaligned.eq(m.sink.branch_taken & m.sink.branch_target[:2].bool()),
+            exception.m_fetch_error.eq(m.sink.fetch_error),
+            exception.m_fetch_badaddr.eq(m.sink.fetch_badaddr),
             exception.m_load_misaligned.eq(m.sink.load & m.sink.loadstore_misaligned),
             exception.m_store_misaligned.eq(m.sink.store & m.sink.loadstore_misaligned),
             exception.m_branch_target.eq(m.sink.branch_target),
@@ -599,10 +599,14 @@ class Minerva(Elaboratable):
                 debug.x_pc.eq(x.sink.pc),
                 debug.x_ebreak.eq(x.sink.ebreak),
                 debug.x_stall.eq(x.stall),
-                debug.m_branch_taken.eq(fetch.m_branch_taken),
-                debug.m_branch_target.eq(fetch.m_branch_target),
+                debug.m_branch_taken.eq(m.sink.branch_taken),
+                debug.m_branch_target.eq(m.sink.branch_target),
+                debug.m_mret.eq(m.sink.mret),
+                debug.m_exception.eq(exception.m_raise),
                 debug.m_pc.eq(m.sink.pc),
-                debug.m_valid.eq(m.valid)
+                debug.m_valid.eq(m.valid),
+                debug.mepc_r_base.eq(exception.mepc.r.base),
+                debug.mtvec_r_base.eq(exception.mtvec.r.base)
             ]
 
             if self.with_trigger:
@@ -636,8 +640,6 @@ class Minerva(Elaboratable):
                     cpu.d.comb += debug.resumeack.eq(1)
                     cpu.d.sync += a.source.pc.eq(debug.dpc_value - 4)
 
-            if self.with_icache:
-                fetch.icache.flush_on(debug.resumereq)
             if self.with_dcache:
                 loadstore.dcache.flush_on(debug.resumereq)
 
@@ -651,27 +653,24 @@ class Minerva(Elaboratable):
 
         # A/F
         with cpu.If(~a.stall):
-            cpu.d.sync += [
-                a.source.pc.eq(fetch.a_pc),
-                a.source.fetch_misaligned.eq(fetch.a_misaligned)
-            ]
+            cpu.d.sync += a.source.pc.eq(fetch.a_pc)
 
         # F/D
         with cpu.If(~f.stall):
             cpu.d.sync += [
                 f.source.pc.eq(f.sink.pc),
-                f.source.fetch_misaligned.eq(f.sink.fetch_misaligned),
                 f.source.instruction.eq(fetch.f_instruction),
-                f.source.ibus_error.eq(fetch.f_ibus_error)
+                f.source.fetch_error.eq(fetch.f_fetch_error),
+                f.source.fetch_badaddr.eq(fetch.f_badaddr)
             ]
 
         # D/X
         with cpu.If(~d.stall):
             cpu.d.sync += [
                 d.source.pc.eq(d.sink.pc),
-                d.source.fetch_misaligned.eq(d.sink.fetch_misaligned),
                 d.source.instruction.eq(d.sink.instruction),
-                d.source.ibus_error.eq(d.sink.ibus_error),
+                d.source.fetch_error.eq(d.sink.fetch_error),
+                d.source.fetch_badaddr.eq(d.sink.fetch_badaddr),
                 d.source.illegal.eq(decoder.illegal),
                 d.source.rd.eq(decoder.rd),
                 d.source.rs1.eq(decoder.rs1),
@@ -715,7 +714,8 @@ class Minerva(Elaboratable):
             cpu.d.sync += [
                 x.source.pc.eq(x.sink.pc),
                 x.source.instruction.eq(x.sink.instruction),
-                x.source.ibus_error.eq(x.sink.ibus_error),
+                x.source.fetch_error.eq(x.sink.fetch_error),
+                x.source.fetch_badaddr.eq(x.sink.fetch_badaddr),
                 x.source.illegal.eq(x.sink.illegal),
                 x.source.loadstore_misaligned.eq(loadstore.x_misaligned),
                 x.source.ecall.eq(x.sink.ecall),

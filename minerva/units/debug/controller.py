@@ -41,8 +41,12 @@ class DebugController(Elaboratable, AutoCSR):
 
         self.m_branch_taken = Signal()
         self.m_branch_target = Signal(32)
+        self.m_mret = Signal()
+        self.m_exception = Signal()
         self.m_pc = Signal(32)
         self.m_valid = Signal()
+        self.mepc_r_base = Signal(30)
+        self.mtvec_r_base = Signal(30)
 
         self.halt = Signal()
         self.halted = Signal()
@@ -112,6 +116,10 @@ class DebugController(Elaboratable, AutoCSR):
                     ]
                     with m.If(halt_pe.o == HaltCause.EBREAK):
                         m.d.sync += self.dpc.r.eq(self.m_pc)
+                    with m.Elif(self.m_exception & self.m_valid):
+                        m.d.sync += self.dpc.r.eq(self.mtvec_r_base << 30)
+                    with m.Elif(self.m_mret & self.m_valid):
+                        m.d.sync += self.dpc.r.eq(self.mepc_r_base << 30)
                     with m.Elif(self.m_branch_taken & self.m_valid):
                         m.d.sync += self.dpc.r.eq(self.m_branch_target)
                     with m.Else():
