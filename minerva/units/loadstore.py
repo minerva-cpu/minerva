@@ -143,6 +143,7 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
 
         self.dcache_args = dcache_args
 
+        self.x_fence_i = Signal()
         self.x_flush = Signal()
         self.m_addr = Signal(32)
         self.m_load = Signal()
@@ -249,6 +250,8 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
 
         with m.If(self.x_store & x_dcache_select):
             m.d.comb += self.x_busy.eq(~wrbuf.writable)
+        with m.Elif(self.x_fence_i):
+            m.d.comb += self.x_busy.eq(wrbuf.readable)
         with m.Else():
             m.d.comb += self.x_busy.eq(bare_port.cyc)
 

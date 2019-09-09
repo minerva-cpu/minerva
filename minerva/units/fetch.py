@@ -40,6 +40,8 @@ class PCSelector(Elaboratable):
             m.d.comb += self.a_pc.eq(self.x_pc)
         with m.Elif(~self.m_branch_predict_taken & self.m_branch_taken & self.m_valid):
             m.d.comb += self.a_pc.eq(self.m_branch_target),
+        with m.Elif(self.x_fence_i & self.x_valid):
+            m.d.comb += self.a_pc.eq(self.d_pc)
         with m.Elif(self.d_branch_predict_taken & self.d_valid):
             m.d.comb += self.a_pc.eq(self.d_branch_target),
         with m.Else():

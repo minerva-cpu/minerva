@@ -248,10 +248,13 @@ class Minerva(Elaboratable):
 
         cpu.d.comb += [
             pc_sel.f_pc.eq(f.sink.pc),
+            pc_sel.d_pc.eq(d.sink.pc),
             pc_sel.d_branch_predict_taken.eq(predict.d_branch_taken & ~predict.d_fetch_misaligned),
             pc_sel.d_branch_target.eq(predict.d_branch_target),
             pc_sel.d_valid.eq(d.valid),
             pc_sel.x_pc.eq(x.sink.pc),
+            pc_sel.x_fence_i.eq(x.sink.fence_i),
+            pc_sel.x_valid.eq(x.valid),
             pc_sel.m_branch_predict_taken.eq(m.sink.branch_predict_taken),
             pc_sel.m_branch_taken.eq(m.sink.branch_taken),
             pc_sel.m_branch_target.eq(m.sink.branch_target),
@@ -275,8 +278,12 @@ class Minerva(Elaboratable):
         m.stall_on(fetch.f_busy & f.valid)
 
         if self.with_icache:
+            flush_icache = x.sink.fence_i & x.valid & ~x.stall
+            if self.with_debug:
+                flush_icache |= debug.resumereq
+
             cpu.d.comb += [
-                fetch.a_flush.eq(Const(0)),
+                fetch.a_flush.eq(flush_icache),
                 fetch.f_pc.eq(f.sink.pc)
             ]
 
@@ -427,12 +434,16 @@ class Minerva(Elaboratable):
                 cpu.d.comb += loadstore.x_flush.eq(debug.resumereq)
 
             cpu.d.comb += [
+                loadstore.x_fence_i.eq(x.sink.fence_i),
                 loadstore.m_addr.eq(m.sink.result),
                 loadstore.m_load.eq(m.sink.load),
                 loadstore.m_store.eq(m.sink.store),
             ]
 
             x.stall_on(loadstore.x_busy & x.valid)
+
+        for s in a, f:
+            s.kill_on(x.sink.fence_i & x.valid)
 
         if self.with_debug:
             with cpu.If(debug.halt & debug.halted):
