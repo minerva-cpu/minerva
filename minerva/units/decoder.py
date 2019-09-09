@@ -69,9 +69,9 @@ class InstructionDecoder(Elaboratable):
 
         iimm12 = Signal((12, True))
         simm12 = Signal((12, True))
-        bimm12 = Signal((12, True))
+        bimm12 = Signal((13, True))
         uimm20 = Signal(20)
-        jimm20 = Signal((20, True))
+        jimm20 = Signal((21, True))
 
         insn = self.instruction
         fmt = Signal(max=Type.J)
