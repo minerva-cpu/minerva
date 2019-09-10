@@ -53,19 +53,20 @@ The following parameters can be used to configure the Minerva core.
 | `with_icache`     | `False`        | Enable the instruction cache                       |
 | `icache_nways`    | `1`            | Number of ways in the instruction cache            |
 | `icache_nlines`   | `128`          | Number of lines in the instruction cache           |
-| `icache_nwords`   | `8`            | Number of words in a line of the instruction cache |
+| `icache_nwords`   | `4`            | Number of words in a line of the instruction cache |
 | `icache_base`     | `0x00000000`   | Base of the instruction cache address space        |
 | `icache_limit`    | `0x80000000`   | Limit of the instruction cache address space       |
 | `with_dcache`     | `False`        | Enable the data cache                              |
 | `dcache_nways`    | `1`            | Number of ways in the data cache                   |
 | `dcache_nlines`   | `128`          | Number of lines in the data cache                  |
-| `dcache_nwords`   | `8`            | Number of words in a line of the data cache        |
+| `dcache_nwords`   | `4`            | Number of words in a line of the data cache        |
 | `dcache_base`     | `0x00000000`   | Base of the data cache address space               |
 | `dcache_limit`    | `0x80000000`   | Limit of the data cache address space              |
 | `as_instance`     | `False`        | Add a default clock domain                         |
 | `with_muldiv`     | `False`        | Enable RV32M support                               |
 | `with_debug`      | `False`        | Enable the Debug Module                            |
 | `with_trigger`    | `False`        | Enable the Trigger Module                          |
+| `nb_triggers`     | `8`            | Number of triggers                                 |
 | `with_rvfi`       | `False`        | Enable the riscv-formal interface                  |
 
 ### Possible improvements
