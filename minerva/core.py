@@ -338,7 +338,7 @@ class Minerva(Elaboratable):
         ]
 
         cpu.d.comb += [
-            adder.sub.eq(x.sink.adder & x.sink.adder_sub),
+            adder.sub.eq(x.sink.adder & x.sink.adder_sub | x.sink.compare | x.sink.branch),
             adder.src1.eq(x.sink.src1),
             adder.src2.eq(Mux(x.sink.store, x.sink.immediate, x.sink.src2))
         ]

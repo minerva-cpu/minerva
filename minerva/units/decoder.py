@@ -167,7 +167,7 @@ class InstructionDecoder(Elaboratable):
                 (Opcode.OP_32,     Funct3.ADD, Funct7.ADD), # add
                 (Opcode.OP_32,     Funct3.ADD, Funct7.SUB)  # sub
             ])),
-            self.adder_sub.eq(self.rs2_re & (funct7 == Funct7.SUB) | self.compare | self.branch),
+            self.adder_sub.eq(self.rs2_re & (funct7 == Funct7.SUB)),
 
             self.logic.eq(matcher([
                 (Opcode.OP_IMM_32, Funct3.XOR, None), # xori
