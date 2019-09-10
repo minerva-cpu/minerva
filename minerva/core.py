@@ -769,8 +769,11 @@ class Minerva(Elaboratable):
                 m.source.load_data.eq(loadstore.m_load_data),
                 m.source.rd_we.eq(m.sink.rd_we),
                 m.source.result.eq(m_result),
-                m.source.multiply.eq(m.sink.multiply),
                 m.source.exception.eq(exception.m_raise)
             ]
+            if self.with_muldiv:
+                cpu.d.sync += [
+                    m.source.multiply.eq(m.sink.multiply)
+                ]
 
         return cpu
