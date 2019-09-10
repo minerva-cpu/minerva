@@ -16,6 +16,7 @@ from .units.decoder import *
 from .units.divider import *
 from .units.exception import *
 from .units.fetch import *
+from .units.rvficon import *
 from .units.loadstore import *
 from .units.logic import *
 from .units.multiplier import *
@@ -140,7 +141,8 @@ class Minerva(Elaboratable):
                 dcache_nways=1, dcache_nlines=256, dcache_nwords=8, dcache_base=0, dcache_limit=2**31,
                 with_muldiv=True,
                 with_debug=False,
-                with_trigger=False, nb_triggers=8):
+                with_trigger=False, nb_triggers=8,
+                with_rvfi=False):
 
         self.external_interrupt = Signal(32)
         self.timer_interrupt = Signal()
@@ -154,6 +156,8 @@ class Minerva(Elaboratable):
         if with_debug:
             self.jtag = Record(jtag_layout)
 
+        if with_rvfi:
+            self.rvfi = Record(rvfi_layout)
 
         self.reset_address = reset_address
         self.as_instance   = as_instance
@@ -165,6 +169,7 @@ class Minerva(Elaboratable):
         self.with_debug    = with_debug
         self.with_trigger  = with_trigger
         self.nb_triggers   = nb_triggers
+        self.with_rvfi     = with_rvfi
 
     def elaborate(self, platform):
         cpu = Module()
@@ -225,6 +230,9 @@ class Minerva(Elaboratable):
 
         if self.with_trigger:
             trigger = cpu.submodules.trigger = TriggerUnit(self.nb_triggers)
+
+        if self.with_rvfi:
+            rvficon = cpu.submodules.rvficon = RVFIController()
 
         # register files
 
@@ -653,13 +661,42 @@ class Minerva(Elaboratable):
                     cpu.d.comb += debug.resumeack.eq(1)
                     cpu.d.sync += a.source.pc.eq(debug.dpc_value - 4)
 
-            if self.with_dcache:
-                loadstore.dcache.flush_on(debug.resumereq)
-
         if self.with_trigger:
             cpu.d.comb += [
                 trigger.x_pc.eq(x.sink.pc),
                 trigger.x_valid.eq(x.valid),
+            ]
+
+        if self.with_rvfi:
+            cpu.d.comb += [
+                rvficon.d_insn.eq(decoder.instruction),
+                rvficon.d_rs1_addr.eq(Mux(decoder.rs1_re, decoder.rs1, 0)),
+                rvficon.d_rs2_addr.eq(Mux(decoder.rs2_re, decoder.rs2, 0)),
+                rvficon.d_rs1_rdata.eq(Mux(decoder.rs1_re, d_src1, 0)),
+                rvficon.d_rs2_rdata.eq(Mux(decoder.rs2_re, d_src2, 0)),
+                rvficon.d_stall.eq(d.stall),
+                rvficon.x_mem_addr.eq(loadstore.x_addr[2:] << 2),
+                rvficon.x_mem_wmask.eq(Mux(loadstore.x_store, loadstore.x_mask, 0)),
+                rvficon.x_mem_rmask.eq(Mux(loadstore.x_load, loadstore.x_mask, 0)),
+                rvficon.x_mem_wdata.eq(loadstore.x_store_data),
+                rvficon.x_stall.eq(x.stall),
+                rvficon.m_mem_rdata.eq(loadstore.m_load_data),
+                rvficon.m_fetch_misaligned.eq(exception.m_fetch_misaligned),
+                rvficon.m_illegal_insn.eq(m.sink.illegal),
+                rvficon.m_load_misaligned.eq(exception.m_load_misaligned),
+                rvficon.m_store_misaligned.eq(exception.m_store_misaligned),
+                rvficon.m_exception.eq(exception.m_raise),
+                rvficon.m_mret.eq(m.sink.mret),
+                rvficon.m_branch_taken.eq(m.sink.branch_taken),
+                rvficon.m_branch_target.eq(m.sink.branch_target),
+                rvficon.m_pc_rdata.eq(m.sink.pc),
+                rvficon.m_stall.eq(m.stall),
+                rvficon.m_valid.eq(m.valid),
+                rvficon.w_rd_addr.eq(Mux(gprf_wp.en, gprf_wp.addr, 0)),
+                rvficon.w_rd_wdata.eq(Mux(gprf_wp.en, gprf_wp.data, 0)),
+                rvficon.mtvec_r_base.eq(exception.mtvec.r.base),
+                rvficon.mepc_r_value.eq(exception.mepc.r),
+                rvficon.rvfi.connect(self.rvfi)
             ]
 
         # pipeline registers

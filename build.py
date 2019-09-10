@@ -40,6 +40,31 @@ def main():
             cpu.jtag.tms
         ]
 
+    if cpu.with_rvfi:
+        ports += [
+            cpu.rvfi.valid,
+            cpu.rvfi.order,
+            cpu.rvfi.insn,
+            cpu.rvfi.trap,
+            cpu.rvfi.halt,
+            cpu.rvfi.intr,
+            cpu.rvfi.mode,
+            cpu.rvfi.ixl,
+            cpu.rvfi.rs1_addr,
+            cpu.rvfi.rs2_addr,
+            cpu.rvfi.rs1_rdata,
+            cpu.rvfi.rs2_rdata,
+            cpu.rvfi.rd_addr,
+            cpu.rvfi.rd_wdata,
+            cpu.rvfi.pc_rdata,
+            cpu.rvfi.pc_wdata,
+            cpu.rvfi.mem_addr,
+            cpu.rvfi.mem_rmask,
+            cpu.rvfi.mem_wmask,
+            cpu.rvfi.mem_rdata,
+            cpu.rvfi.mem_wdata,
+        ]
+
     frag = cpu.elaborate(platform=None)
     print(verilog.convert(frag, name="minerva_cpu", ports=ports))
 
