@@ -4,11 +4,15 @@ from minerva.core import Minerva
 
 
 def main():
-    cpu = Minerva(as_instance=True, with_icache=False, with_dcache=False, with_muldiv=False)
+    cpu = Minerva(as_instance=True,
+                  with_icache=False,  icache_nways=1, icache_nlines=128, icache_nwords=4,
+                  with_dcache=False,  dcache_nways=1, dcache_nlines=128, dcache_nwords=4,
+                  with_muldiv=False, with_debug=False, with_trigger=False, with_rvfi=False)
     ports = [
         cpu.clk,
         cpu.rst,
         cpu.external_interrupt,
+        cpu.timer_interrupt,
         cpu.ibus.ack,
         cpu.ibus.adr,
         cpu.ibus.bte,
@@ -32,6 +36,7 @@ def main():
         cpu.dbus.we,
         cpu.dbus.err
     ]
+
     if cpu.with_debug:
         ports += [
             cpu.jtag.tck,
