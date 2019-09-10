@@ -12,7 +12,7 @@ class L1Cache(Elaboratable):
         if not nlines or nlines & nlines-1:
             raise ValueError("nlines must be a power of 2, not {!r}".format(nlines))
         if nwords not in {4, 8, 16}:
-            raise ValueError("nlines must be a power of 2, not {!r}".format(nwords))
+            raise ValueError("nwords must be 4, 8 or 16, not {!r}".format(nwords))
         if nways not in {1, 2}:
             raise ValueError("nways must be 1 or 2, not {!r}".format(nways))
 
