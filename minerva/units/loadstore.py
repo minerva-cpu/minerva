@@ -248,10 +248,10 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
                 self.m_store_error.eq(0)
             ]
 
-        with m.If(self.x_store & x_dcache_select):
-            m.d.comb += self.x_busy.eq(~wrbuf.writable)
-        with m.Elif(self.x_fence_i):
+        with m.If(self.x_fence_i):
             m.d.comb += self.x_busy.eq(wrbuf.readable)
+        with m.Elif(x_dcache_select):
+            m.d.comb += self.x_busy.eq(self.x_store & ~wrbuf.writable)
         with m.Else():
             m.d.comb += self.x_busy.eq(bare_port.cyc)
 
