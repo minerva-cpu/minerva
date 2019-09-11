@@ -19,6 +19,7 @@ To use Minerva, you need to wire the following ports to `minerva_cpu`:
 * `dbus__*`
 * `external_interrupt`
 * `timer_interrupt`
+* `software_interrupt`
 
 ### Features
 

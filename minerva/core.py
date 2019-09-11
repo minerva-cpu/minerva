@@ -146,6 +146,7 @@ class Minerva(Elaboratable):
 
         self.external_interrupt = Signal(32)
         self.timer_interrupt = Signal()
+        self.software_interrupt = Signal()
         self.ibus = Record(wishbone_layout)
         self.dbus = Record(wishbone_layout)
 
@@ -382,6 +383,7 @@ class Minerva(Elaboratable):
         cpu.d.comb += [
             exception.external_interrupt.eq(self.external_interrupt),
             exception.timer_interrupt.eq(self.timer_interrupt),
+            exception.software_interrupt.eq(self.software_interrupt),
             exception.m_fetch_misaligned.eq(m.sink.branch_taken & m.sink.branch_target[:2].bool()),
             exception.m_fetch_error.eq(m.sink.fetch_error),
             exception.m_fetch_badaddr.eq(m.sink.fetch_badaddr),

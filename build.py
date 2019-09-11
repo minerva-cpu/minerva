@@ -13,6 +13,7 @@ def main():
         cpu.rst,
         cpu.external_interrupt,
         cpu.timer_interrupt,
+        cpu.software_interrupt,
         cpu.ibus.ack,
         cpu.ibus.adr,
         cpu.ibus.bte,

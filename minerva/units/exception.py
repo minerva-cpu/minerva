@@ -24,6 +24,8 @@ class ExceptionUnit(Elaboratable, AutoCSR):
 
         self.external_interrupt = Signal(32)
         self.timer_interrupt = Signal()
+        self.software_interrupt = Signal()
+
         self.m_fetch_misaligned = Signal()
         self.m_fetch_error = Signal()
         self.m_fetch_badaddr = Signal(30)
@@ -67,6 +69,7 @@ class ExceptionUnit(Elaboratable, AutoCSR):
 
         m.d.sync += [
             self.irq_pending.r.eq(self.external_interrupt & self.irq_mask.r),
+            self.mip.r.msip.eq(self.software_interrupt),
             self.mip.r.mtip.eq(self.timer_interrupt),
             self.mip.r.meip.eq(self.irq_pending.r.bool())
         ]
