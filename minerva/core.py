@@ -134,25 +134,19 @@ _mw_layout = [
 
 class Minerva(Elaboratable):
     def __init__(self, reset_address=0x00000000,
-                as_instance=False,
-                with_icache=True,
+                with_icache=False,
                 icache_nways=1, icache_nlines=256, icache_nwords=8, icache_base=0, icache_limit=2**31,
-                with_dcache=True,
+                with_dcache=False,
                 dcache_nways=1, dcache_nlines=256, dcache_nwords=8, dcache_base=0, dcache_limit=2**31,
-                with_muldiv=True,
+                with_muldiv=False,
                 with_debug=False,
                 with_trigger=False, nb_triggers=8,
                 with_rvfi=False):
-
         self.external_interrupt = Signal(32)
         self.timer_interrupt = Signal()
         self.software_interrupt = Signal()
         self.ibus = Record(wishbone_layout)
         self.dbus = Record(wishbone_layout)
-
-        if as_instance:
-            self.clk = Signal()
-            self.rst = Signal()
 
         if with_debug:
             self.jtag = Record(jtag_layout)
@@ -161,7 +155,6 @@ class Minerva(Elaboratable):
             self.rvfi = Record(rvfi_layout)
 
         self.reset_address = reset_address
-        self.as_instance   = as_instance
         self.with_icache   = with_icache
         self.icache_args   = icache_nways, icache_nlines, icache_nwords, icache_base, icache_limit
         self.with_dcache   = with_dcache
@@ -174,13 +167,6 @@ class Minerva(Elaboratable):
 
     def elaborate(self, platform):
         cpu = Module()
-
-        if self.as_instance:
-            cd_sync = cpu.domains.cd_sync = ClockDomain()
-            cpu.d.comb += [
-                cd_sync.clk.eq(self.clk),
-                cd_sync.rst.eq(self.rst)
-            ]
 
         # pipeline stages
 

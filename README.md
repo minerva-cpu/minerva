@@ -9,9 +9,9 @@ Minerva is a CPU core that currently implements the [RISC-V][1] RV32IM instructi
 Minerva currently requires Python 3.6+ and [nMigen][2] on its `master` branch.
 
     python setup.py install
-    python build.py > minerva.v
+    python cli.py generate > minerva.v
 
-To use Minerva, you need to wire the following ports to `minerva_cpu`:
+To use Minerva in its minimal configuration, you need to wire the following ports to `minerva_cpu`:
 
 * `clk`
 * `rst`
@@ -63,7 +63,6 @@ The following parameters can be used to configure the Minerva core.
 | `dcache_nwords`   | `4`            | Number of words in a line of the data cache        |
 | `dcache_base`     | `0x00000000`   | Base of the data cache address space               |
 | `dcache_limit`    | `0x80000000`   | Limit of the data cache address space              |
-| `as_instance`     | `False`        | Add a default clock domain                         |
 | `with_muldiv`     | `False`        | Enable RV32M support                               |
 | `with_debug`      | `False`        | Enable the Debug Module                            |
 | `with_trigger`    | `False`        | Enable the Trigger Module                          |
