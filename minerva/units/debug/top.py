@@ -1,7 +1,6 @@
 from nmigen import *
 from nmigen.hdl.rec import *
 
-from jtagtap import JTAGTap
 
 from ...csr import *
 from ...isa import *
@@ -67,18 +66,14 @@ class DebugUnit(Elaboratable, AutoCSR):
         self.gprf_we = Signal()
         self.gprf_dat_w = Signal(32)
 
-        self.tap = JTAGTap(jtag_regs)
-        self.regfile = DebugRegisterFile(self.tap.regs[JTAGReg.DMI])
-        self.controller = DebugController(self.regfile)
-        self.wbmaster = DebugWishboneMaster(self.regfile)
-
     def elaborate(self, platform):
         m = Module()
 
-        tap        = m.submodules.tap        = self.tap
-        regfile    = m.submodules.regfile    = self.regfile
-        controller = m.submodules.controller = self.controller
-        wbmaster   = m.submodules.wbmaster   = self.wbmaster
+        from jtagtap import JTAGTap
+        tap        = m.submodules.tap        = JTAGTap(jtag_regs)
+        regfile    = m.submodules.regfile    = DebugRegisterFile(tap.regs[JTAGReg.DMI])
+        controller = m.submodules.controller = DebugController(regfile)
+        wbmaster   = m.submodules.wbmaster   = DebugWishboneMaster(regfile)
 
         m.d.comb += [
             tap.port.connect(self.jtag),
