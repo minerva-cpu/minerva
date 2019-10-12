@@ -209,9 +209,10 @@ class Minerva(Elaboratable):
             loadstore = cpu.submodules.loadstore = BareLoadStoreUnit()
 
         if self.with_muldiv:
-            divider    = cpu.submodules.divider    = Divider()
             multiplier = Multiplier() if not self.with_rvfi else DummyMultiplier()
+            divider    = Divider()    if not self.with_rvfi else DummyDivider()
             cpu.submodules.multiplier = multiplier
+            cpu.submodules.divider    = divider
 
         if self.with_debug:
             debug = cpu.submodules.debug = DebugUnit()
@@ -348,7 +349,7 @@ class Minerva(Elaboratable):
                 divider.x_stall.eq(x.stall)
             ]
 
-            m.stall_on(divider.m_divide_ongoing)
+            m.stall_on(divider.m_busy)
 
         cpu.d.comb += [
             shifter.x_direction.eq(x.sink.direction),

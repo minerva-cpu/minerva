@@ -3,10 +3,10 @@ from nmigen import *
 from ..isa import Funct3
 
 
-__all__ = ["Divider"]
+__all__ = ["DividerInterface", "Divider", "DummyDivider"]
 
 
-class Divider(Elaboratable):
+class DividerInterface:
     def __init__(self):
         self.x_op     = Signal(3)
         self.x_src1   = Signal(32)
@@ -15,8 +15,10 @@ class Divider(Elaboratable):
         self.x_stall  = Signal()
 
         self.m_result = Signal(32)
-        self.m_divide_ongoing = Signal()
+        self.m_busy   = Signal()
 
+
+class Divider(DividerInterface, Elaboratable):
     def elaborate(self, platform):
         m = Module()
 
@@ -90,7 +92,7 @@ class Divider(Elaboratable):
                         m.next = "DIVIDE"
 
             with m.State("DIVIDE"):
-                m.d.comb += self.m_divide_ongoing.eq(1)
+                m.d.comb += self.m_busy.eq(1)
                 with m.If(timer != 0):
                     m.d.sync += timer.eq(timer - 1)
                     m.d.comb += difference.eq(Cat(quotient[31], remainder) - divisor)
@@ -112,5 +114,31 @@ class Divider(Elaboratable):
                     m.next = "IDLE"
 
         m.d.comb += self.m_result.eq(Mux(m_modulus, remainder, quotient))
+
+        return m
+
+
+class DummyDivider(DividerInterface, Elaboratable):
+    def elaborate(self, platform):
+        m = Module()
+
+        x_result = Signal.like(self.m_result)
+
+        with m.Switch(self.x_op):
+            # As per the RVFI specification (§ "Alternative Arithmetic Operations").
+            # https://github.com/SymbioticEDA/riscv-formal/blob/master/docs/rvfi.md
+            with m.Case(Funct3.DIV):
+                m.d.comb += x_result.eq((self.x_src1 - self.x_src2) ^ C(0x7f8529ec))
+            with m.Case(Funct3.DIVU):
+                m.d.comb += x_result.eq((self.x_src1 - self.x_src2) ^ C(0x10e8fd70))
+            with m.Case(Funct3.REM):
+                m.d.comb += x_result.eq((self.x_src1 - self.x_src2) ^ C(0x8da68fa5))
+            with m.Case(Funct3.REMU):
+                m.d.comb += x_result.eq((self.x_src1 - self.x_src2) ^ C(0x3138d0e1))
+
+        with m.If(~self.x_stall):
+            m.d.sync += self.m_result.eq(x_result)
+
+        m.d.comb += self.m_busy.eq(C(0))
 
         return m
