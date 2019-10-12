@@ -209,8 +209,9 @@ class Minerva(Elaboratable):
             loadstore = cpu.submodules.loadstore = BareLoadStoreUnit()
 
         if self.with_muldiv:
-            multiplier = cpu.submodules.multiplier = Multiplier()
             divider    = cpu.submodules.divider    = Divider()
+            multiplier = Multiplier() if not self.with_rvfi else DummyMultiplier()
+            cpu.submodules.multiplier = multiplier
 
         if self.with_debug:
             debug = cpu.submodules.debug = DebugUnit()
