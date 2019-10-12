@@ -52,7 +52,7 @@ class Divider(DividerInterface, Elaboratable):
         m_modulus  = Signal()
         m_negative = Signal()
 
-        timer      = Signal(max=33, reset=32)
+        timer      = Signal(range(33), reset=32)
         quotient   = Signal(32)
         divisor    = Signal(32)
         remainder  = Signal(32)

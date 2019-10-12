@@ -31,8 +31,8 @@ class Multiplier(MultiplierInterface, Elaboratable):
             x_src2_signed.eq(self.x_op == Funct3.MULH)
         ]
 
-        x_src1 = Signal((33, True))
-        x_src2 = Signal((33, True))
+        x_src1 = Signal(signed(33))
+        x_src2 = Signal(signed(33))
 
         m.d.comb += [
             x_src1.eq(Cat(self.x_src1, x_src1_signed & self.x_src1[31])),
@@ -40,7 +40,7 @@ class Multiplier(MultiplierInterface, Elaboratable):
         ]
 
         m_low = Signal()
-        m_prod = Signal((66, True))
+        m_prod = Signal(signed(66))
 
         with m.If(~self.x_stall):
             m.d.sync += [
