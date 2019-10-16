@@ -3,7 +3,7 @@ from collections import OrderedDict
 
 from nmigen import *
 from nmigen.hdl.rec import *
-from nmigen.tools import bits_for
+from nmigen.utils import bits_for
 
 
 __all__ = ["CSRAccess", "CSR", "AutoCSR", "CSRFile"]

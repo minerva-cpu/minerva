@@ -1,7 +1,7 @@
 from nmigen import *
 from nmigen.asserts import *
 from nmigen.lib.coding import Encoder
-from nmigen.tools import log2_int
+from nmigen.utils import log2_int
 
 
 __all__ = ["L1Cache"]

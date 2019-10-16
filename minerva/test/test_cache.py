@@ -1,5 +1,5 @@
 from nmigen import *
-from nmigen.tools import log2_int
+from nmigen.utils import log2_int
 from nmigen.test.tools import *
 from nmigen.asserts import *
 
