@@ -1,6 +1,6 @@
 from nmigen import *
 from nmigen.back.pysim import *
-from nmigen.test.tools import *
+from nmigen.test.utils import *
 
 from ..units.divider import *
 from ..isa import Funct3
