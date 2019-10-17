@@ -1,6 +1,6 @@
 from nmigen import *
-from nmigen.tools import log2_int
-from nmigen.test.tools import *
+from nmigen.utils import log2_int
+from nmigen.test.utils import *
 from nmigen.asserts import *
 
 from ..cache import L1Cache
