@@ -1,9 +1,4 @@
-import sys
 from setuptools import setup, find_packages
-
-
-if sys.version_info[:3] < (3, 6):
-    raise SystemExit("Minerva requires Python 3.6+")
 
 
 setup(
@@ -13,6 +8,7 @@ setup(
     author="Jean-François Nguyen",
     author_email="jf@lambdaconcept.fr",
     license="BSD",
+    python_requires="~=3.6",
     install_requires=["nmigen>=0.1rc1"],
     extras_require={ "debug": ["jtagtap"] },
     packages=find_packages(),
