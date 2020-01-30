@@ -172,16 +172,16 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
             dcache.s2_valid.eq(self.m_valid & m_dcache_select)
         ]
 
-        wrbuf_din  = Record([("addr", 30), ("mask", 4), ("data", 32)])
-        wrbuf_dout = Record.like(wrbuf_din)
-        wrbuf = m.submodules.wrbuf = SyncFIFO(width=len(wrbuf_din), depth=dcache.nwords)
+        wrbuf_w_data = Record([("addr", 30), ("mask", 4), ("data", 32)])
+        wrbuf_r_data = Record.like(wrbuf_w_data)
+        wrbuf = m.submodules.wrbuf = SyncFIFO(width=len(wrbuf_w_data), depth=dcache.nwords)
         m.d.comb += [
-            wrbuf.din.eq(wrbuf_din),
-            wrbuf_din.addr.eq(self.x_addr[2:]),
-            wrbuf_din.mask.eq(self.x_mask),
-            wrbuf_din.data.eq(self.x_store_data),
-            wrbuf.we.eq(self.x_store & self.x_valid & x_dcache_select & ~self.x_stall),
-            wrbuf_dout.eq(wrbuf.dout),
+            wrbuf.w_data.eq(wrbuf_w_data),
+            wrbuf_w_data.addr.eq(self.x_addr[2:]),
+            wrbuf_w_data.mask.eq(self.x_mask),
+            wrbuf_w_data.data.eq(self.x_store_data),
+            wrbuf.w_en.eq(self.x_store & self.x_valid & x_dcache_select & ~self.x_stall),
+            wrbuf_r_data.eq(wrbuf.r_data),
         ]
 
         dbus_arbiter = m.submodules.dbus_arbiter = WishboneArbiter()
@@ -194,14 +194,14 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
                     wrbuf_port.cyc.eq(0),
                     wrbuf_port.stb.eq(0)
                 ]
-                m.d.comb += wrbuf.re.eq(1)
-        with m.Elif(wrbuf.readable):
+                m.d.comb += wrbuf.r_en.eq(1)
+        with m.Elif(wrbuf.r_rdy):
             m.d.sync += [
                 wrbuf_port.cyc.eq(1),
                 wrbuf_port.stb.eq(1),
-                wrbuf_port.adr.eq(wrbuf_dout.addr),
-                wrbuf_port.sel.eq(wrbuf_dout.mask),
-                wrbuf_port.dat_w.eq(wrbuf_dout.data)
+                wrbuf_port.adr.eq(wrbuf_r_data.addr),
+                wrbuf_port.sel.eq(wrbuf_r_data.mask),
+                wrbuf_port.dat_w.eq(wrbuf_r_data.data)
             ]
         m.d.comb += wrbuf_port.we.eq(Const(1))
 
@@ -249,9 +249,9 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
             ]
 
         with m.If(self.x_fence_i):
-            m.d.comb += self.x_busy.eq(wrbuf.readable)
+            m.d.comb += self.x_busy.eq(wrbuf.r_rdy)
         with m.Elif(x_dcache_select):
-            m.d.comb += self.x_busy.eq(self.x_store & ~wrbuf.writable)
+            m.d.comb += self.x_busy.eq(self.x_store & ~wrbuf.w_rdy)
         with m.Else():
             m.d.comb += self.x_busy.eq(bare_port.cyc)
 

@@ -74,7 +74,7 @@ class InstructionDecoder(Elaboratable):
         jimm20 = Signal((21, True))
 
         insn = self.instruction
-        fmt = Signal(max=Type.J)
+        fmt = Signal(range(Type.J + 1))
 
         m.d.comb += [
             opcode.eq(insn[2:7]),
