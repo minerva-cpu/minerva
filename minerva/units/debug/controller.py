@@ -3,7 +3,6 @@ from nmigen.lib.coding import PriorityEncoder
 
 from ...csr import *
 from ...isa import *
-from ...wishbone import wishbone_layout
 from .dmi import DebugReg, Command, Error, Version, cmd_access_reg_layout
 
 

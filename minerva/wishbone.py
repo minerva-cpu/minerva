@@ -2,35 +2,18 @@ from nmigen import *
 from nmigen.hdl.rec import *
 from nmigen.lib.coding import *
 
-
-__all__ = ["Cycle", "wishbone_layout", "WishboneArbiter"]
-
-
-class Cycle:
-    CLASSIC   = 0
-    CONSTANT  = 1
-    INCREMENT = 2
-    END       = 7
+from nmigen_soc import wishbone
 
 
-wishbone_layout = [
-    ("adr",   30, DIR_FANOUT),
-    ("dat_w", 32, DIR_FANOUT),
-    ("dat_r", 32, DIR_FANIN),
-    ("sel",    4, DIR_FANOUT),
-    ("cyc",    1, DIR_FANOUT),
-    ("stb",    1, DIR_FANOUT),
-    ("ack",    1, DIR_FANIN),
-    ("we",     1, DIR_FANOUT),
-    ("cti",    3, DIR_FANOUT),
-    ("bte",    2, DIR_FANOUT),
-    ("err",    1, DIR_FANIN)
-]
+__all__ = ["WishbonePriorityArbiter"]
 
 
-class WishboneArbiter(Elaboratable):
-    def __init__(self):
-        self.bus = Record(wishbone_layout)
+class WishbonePriorityArbiter(Elaboratable):
+    def __init__(self, bus):
+        if not isinstance(bus, wishbone.Interface):
+            raise ValueError("Bus must be an instance of wishbone.Interface, not {!r}"
+                             .format(bus))
+        self.bus = bus
         self._port_map = dict()
 
     def port(self, priority):
@@ -39,7 +22,8 @@ class WishboneArbiter(Elaboratable):
                             .format(priority))
         if priority in self._port_map:
             raise ValueError("Conflicting priority: '{!r}'".format(priority))
-        port = self._port_map[priority] = Record.like(self.bus)
+        port = wishbone.Interface.like(self.bus)
+        self._port_map[priority] = port
         return port
 
     def elaborate(self, platform):
@@ -56,6 +40,7 @@ class WishboneArbiter(Elaboratable):
                 m.d.sync += bus_pe.i[j].eq(port.cyc)
 
         source = Array(ports)[bus_pe.o]
+
         m.d.comb += [
             self.bus.adr.eq(source.adr),
             self.bus.dat_w.eq(source.dat_w),
@@ -63,10 +48,14 @@ class WishboneArbiter(Elaboratable):
             self.bus.cyc.eq(source.cyc),
             self.bus.stb.eq(source.stb),
             self.bus.we.eq(source.we),
-            self.bus.cti.eq(source.cti),
-            self.bus.bte.eq(source.bte),
-            source.ack.eq(self.bus.ack),
-            source.err.eq(self.bus.err)
         ]
+        if hasattr(self.bus, "cti"):
+            m.d.comb += self.bus.cti.eq(source.cti)
+        if hasattr(self.bus, "bte"):
+            m.d.comb += self.bus.bte.eq(source.bte)
+
+        m.d.comb += source.ack.eq(self.bus.ack)
+        if hasattr(self.bus, "err"):
+            m.d.comb += source.err.eq(self.bus.err)
 
         return m

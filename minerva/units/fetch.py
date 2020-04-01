@@ -1,8 +1,10 @@
 from nmigen import *
 from nmigen.utils import log2_int
 
+from nmigen_soc import wishbone
+
 from ..cache import *
-from ..wishbone import *
+from ..wishbone import WishbonePriorityArbiter
 
 
 __all__ = ["PCSelector", "FetchUnitInterface", "BareFetchUnit", "CachedFetchUnit"]
@@ -52,8 +54,6 @@ class PCSelector(Elaboratable):
 
 class FetchUnitInterface:
     def __init__(self):
-        self.ibus = Record(wishbone_layout)
-
         self.a_pc = Signal(32)
         self.a_stall = Signal()
         self.a_valid = Signal()
@@ -68,6 +68,11 @@ class FetchUnitInterface:
 
 
 class BareFetchUnit(FetchUnitInterface, Elaboratable):
+    def __init__(self):
+        super().__init__()
+        self.ibus = wishbone.Interface(addr_width=30, data_width=32, granularity=8,
+                                       features={"err"})
+
     def elaborate(self, platform):
         m = Module()
 
@@ -113,11 +118,13 @@ class BareFetchUnit(FetchUnitInterface, Elaboratable):
 class CachedFetchUnit(FetchUnitInterface, Elaboratable):
     def __init__(self, *icache_args):
         super().__init__()
-
         self.icache_args = icache_args
 
         self.a_flush = Signal()
         self.f_pc = Signal(32)
+
+        self.ibus = wishbone.Interface(addr_width=30, data_width=32, granularity=8,
+                                       features={"err", "cti", "bte"})
 
     def elaborate(self, platform):
         m = Module()
@@ -142,22 +149,24 @@ class CachedFetchUnit(FetchUnitInterface, Elaboratable):
             icache.s2_valid.eq(self.f_valid & f_icache_select)
         ]
 
-        ibus_arbiter = m.submodules.ibus_arbiter = WishboneArbiter()
-        m.d.comb += ibus_arbiter.bus.connect(self.ibus)
+        m.submodules.arbiter = arbiter = WishbonePriorityArbiter(self.ibus)
 
-        icache_port = ibus_arbiter.port(priority=0)
+        icache_port = arbiter.port(priority=0)
         m.d.comb += [
             icache_port.cyc.eq(icache.bus_re),
             icache_port.stb.eq(icache.bus_re),
             icache_port.adr.eq(icache.bus_addr),
-            icache_port.cti.eq(Mux(icache.bus_last, Cycle.END, Cycle.INCREMENT)),
-            icache_port.bte.eq(Const(log2_int(icache.nwords) - 1)),
             icache.bus_valid.eq(icache_port.ack),
             icache.bus_error.eq(icache_port.err),
             icache.bus_rdata.eq(icache_port.dat_r)
         ]
+        with m.If(icache.bus_last):
+            m.d.comb += icache_port.cti.eq(wishbone.CycleType.END_OF_BURST)
+        with m.Else():
+            m.d.comb += icache_port.cti.eq(wishbone.CycleType.INCR_BURST)
+        m.d.comb += icache_port.bte.eq(Const(log2_int(icache.nwords) - 1))
 
-        bare_port = ibus_arbiter.port(priority=1)
+        bare_port = arbiter.port(priority=1)
         bare_rdata = Signal.like(bare_port.dat_r)
         with m.If(bare_port.cyc):
             with m.If(bare_port.ack | bare_port.err | ~self.f_valid):

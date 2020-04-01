@@ -2,9 +2,11 @@ from nmigen import *
 from nmigen.utils import log2_int
 from nmigen.lib.fifo import SyncFIFO
 
+from nmigen_soc import wishbone
+
 from ..cache import *
 from ..isa import Funct3
-from ..wishbone import *
+from ..wishbone import WishbonePriorityArbiter
 
 
 __all__ = ["DataSelector", "LoadStoreUnitInterface", "BareLoadStoreUnit", "CachedLoadStoreUnit"]
@@ -74,8 +76,6 @@ class DataSelector(Elaboratable):
 
 class LoadStoreUnitInterface:
     def __init__(self):
-        self.dbus = Record(wishbone_layout)
-
         self.x_addr = Signal(32)
         self.x_mask = Signal(4)
         self.x_load = Signal()
@@ -95,6 +95,11 @@ class LoadStoreUnitInterface:
 
 
 class BareLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
+    def __init__(self):
+        super().__init__()
+        self.dbus = wishbone.Interface(addr_width=30, data_width=32, granularity=8,
+                                       features={"err"})
+
     def elaborate(self, platform):
         m = Module()
 
@@ -140,7 +145,6 @@ class BareLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
 class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
     def __init__(self, *dcache_args):
         super().__init__()
-
         self.dcache_args = dcache_args
 
         self.x_fence_i = Signal()
@@ -148,6 +152,9 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
         self.m_addr = Signal(32)
         self.m_load = Signal()
         self.m_store = Signal()
+
+        self.dbus = wishbone.Interface(addr_width=30, data_width=32, granularity=8,
+                                       features={"err", "cti", "bte"})
 
     def elaborate(self, platform):
         m = Module()
@@ -184,10 +191,9 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
             wrbuf_r_data.eq(wrbuf.r_data),
         ]
 
-        dbus_arbiter = m.submodules.dbus_arbiter = WishboneArbiter()
-        m.d.comb += dbus_arbiter.bus.connect(self.dbus)
+        m.submodules.arbiter = arbiter = WishbonePriorityArbiter(self.dbus)
 
-        wrbuf_port = dbus_arbiter.port(priority=0)
+        wrbuf_port = arbiter.port(priority=0)
         with m.If(wrbuf_port.cyc):
             with m.If(wrbuf_port.ack | wrbuf_port.err):
                 m.d.sync += [
@@ -205,19 +211,22 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
             ]
         m.d.comb += wrbuf_port.we.eq(Const(1))
 
-        dcache_port = dbus_arbiter.port(priority=1)
+        dcache_port = arbiter.port(priority=1)
         m.d.comb += [
             dcache_port.cyc.eq(dcache.bus_re),
             dcache_port.stb.eq(dcache.bus_re),
             dcache_port.adr.eq(dcache.bus_addr),
-            dcache_port.cti.eq(Mux(dcache.bus_last, Cycle.END, Cycle.INCREMENT)),
-            dcache_port.bte.eq(Const(log2_int(dcache.nwords) - 1)),
             dcache.bus_valid.eq(dcache_port.ack),
             dcache.bus_error.eq(dcache_port.err),
             dcache.bus_rdata.eq(dcache_port.dat_r)
         ]
+        with m.If(dcache.bus_last):
+            m.d.comb += dcache_port.cti.eq(wishbone.CycleType.END_OF_BURST)
+        with m.Else():
+            m.d.comb += dcache_port.cti.eq(wishbone.CycleType.INCR_BURST)
+        m.d.comb += dcache_port.bte.eq(Const(log2_int(dcache.nwords) - 1))
 
-        bare_port = dbus_arbiter.port(priority=2)
+        bare_port = arbiter.port(priority=2)
         bare_rdata = Signal.like(bare_port.dat_r)
         with m.If(bare_port.cyc):
             with m.If(bare_port.ack | bare_port.err | ~self.m_valid):
