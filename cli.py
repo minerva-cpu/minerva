@@ -89,17 +89,11 @@ def main():
 
     ports = [
         cpu.external_interrupt, cpu.timer_interrupt, cpu.software_interrupt,
-        cpu.ibus.ack, cpu.ibus.adr, cpu.ibus.cyc, cpu.ibus.dat_r,
+        cpu.ibus.ack, cpu.ibus.adr, cpu.ibus.bte, cpu.ibus.cti, cpu.ibus.cyc, cpu.ibus.dat_r,
         cpu.ibus.dat_w, cpu.ibus.sel, cpu.ibus.stb, cpu.ibus.we, cpu.ibus.err,
-        cpu.dbus.ack, cpu.dbus.adr, cpu.dbus.cyc, cpu.dbus.dat_r,
+        cpu.dbus.ack, cpu.dbus.adr, cpu.dbus.bte, cpu.dbus.cti, cpu.dbus.cyc, cpu.dbus.dat_r,
         cpu.dbus.dat_w, cpu.dbus.sel, cpu.dbus.stb, cpu.dbus.we, cpu.dbus.err
     ]
-
-    if args.with_icache:
-        ports += [cpu.ibus.cti, cpu.ibus.bte]
-
-    if args.with_dcache:
-        ports += [cpu.dbus.cti, cpu.dbus.bte]
 
     if args.with_debug:
         ports += [cpu.jtag.tck, cpu.jtag.tdi, cpu.jtag.tdo, cpu.jtag.tms]

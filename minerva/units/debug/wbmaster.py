@@ -4,8 +4,7 @@ from operator import or_
 from nmigen import *
 from nmigen.hdl.rec import *
 
-from nmigen_soc import wishbone
-
+from ...wishbone import wishbone_layout
 from .dmi import *
 
 
@@ -29,8 +28,7 @@ class AccessSize:
 
 class DebugWishboneMaster(Elaboratable):
     def __init__(self, debugrf):
-        self.bus = wishbone.Interface(addr_width=30, data_width=32, granularity=8,
-                                      features={"err"})
+        self.bus = Record(wishbone_layout)
 
         self.dbus_busy = Signal()
 

@@ -5,8 +5,6 @@ from itertools import tee
 from nmigen import *
 from nmigen.lib.coding import PriorityEncoder
 
-from nmigen_soc import wishbone
-
 from .isa import *
 from .stage import *
 from .csr import *
@@ -27,6 +25,7 @@ from .units.shifter import *
 from .units.trigger import *
 
 from .units.debug.jtag import jtag_layout
+from .wishbone import wishbone_layout
 
 
 __all__ = ["Minerva"]
@@ -143,14 +142,11 @@ class Minerva(Elaboratable):
                 with_debug=False,
                 with_trigger=False, nb_triggers=8,
                 with_rvfi=False):
-
-        ibus_features = {"err"}
-        if with_icache:
-            ibus_features |= {"cti", "bte"}
-
-        dbus_features = {"err"}
-        if with_dcache:
-            dbus_features |= {"cti", "bte"}
+        self.external_interrupt = Signal(32)
+        self.timer_interrupt = Signal()
+        self.software_interrupt = Signal()
+        self.ibus = Record(wishbone_layout)
+        self.dbus = Record(wishbone_layout)
 
         if with_debug:
             self.jtag = Record(jtag_layout)
@@ -168,15 +164,6 @@ class Minerva(Elaboratable):
         self.with_trigger  = with_trigger
         self.nb_triggers   = nb_triggers
         self.with_rvfi     = with_rvfi
-
-        self.external_interrupt = Signal(32)
-        self.timer_interrupt    = Signal()
-        self.software_interrupt = Signal()
-
-        self.ibus = wishbone.Interface(addr_width=30, data_width=32, granularity=8,
-                                       features=ibus_features)
-        self.dbus = wishbone.Interface(addr_width=30, data_width=32, granularity=8,
-                                       features=dbus_features)
 
     def elaborate(self, platform):
         cpu = Module()
@@ -458,17 +445,7 @@ class Minerva(Elaboratable):
 
         if self.with_debug:
             with cpu.If(debug.halt & debug.halted):
-                cpu.d.comb += [
-                    self.dbus.cyc.eq(debug.dbus.cyc),
-                    self.dbus.stb.eq(debug.dbus.stb),
-                    self.dbus.sel.eq(debug.dbus.sel),
-                    self.dbus.adr.eq(debug.dbus.adr),
-                    self.dbus.we.eq(debug.dbus.we),
-                    self.dbus.dat_w.eq(debug.dbus.dat_w),
-                    debug.dbus.dat_r.eq(self.dbus.dat_r),
-                    debug.dbus.ack.eq(self.dbus.ack),
-                    debug.dbus.err.eq(self.dbus.err),
-                ]
+                cpu.d.comb += debug.dbus.connect(self.dbus)
             with cpu.Else():
                 cpu.d.comb += loadstore.dbus.connect(self.dbus)
         else:

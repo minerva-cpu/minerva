@@ -9,10 +9,7 @@ setup(
     author_email="jf@lambdaconcept.com",
     license="BSD",
     python_requires="~=3.6",
-    install_requires=[
-        "nmigen==0.1",
-        "nmigen-soc",
-    ],
+    install_requires=["nmigen>=0.1rc1"],
     extras_require={ "debug": ["jtagtap"] },
     packages=find_packages(),
     project_urls={
