@@ -9,12 +9,26 @@ __all__ = ["L1Cache"]
 
 class L1Cache(Elaboratable):
     def __init__(self, nways, nlines, nwords, base, limit):
-        if not nlines or nlines & nlines-1:
-            raise ValueError("nlines must be a power of 2, not {!r}".format(nlines))
+        if not isinstance(nlines, int):
+            raise TypeError("nlines must be an integer, not {!r}".format(nlines))
+        if nlines == 0 or nlines & nlines - 1:
+            raise ValueError("nlines must be a power of 2, not {}".format(nlines))
         if nwords not in {4, 8, 16}:
             raise ValueError("nwords must be 4, 8 or 16, not {!r}".format(nwords))
         if nways not in {1, 2}:
             raise ValueError("nways must be 1 or 2, not {!r}".format(nways))
+
+        if not isinstance(base, int):
+            raise TypeError("base must be an integer, not {!r}".format(base))
+        if base not in range(0, 2**32) or base & base - 1:
+            raise ValueError("base must be 0 or a power of 2 (< 2**32), not {:#x}".format(base))
+        if not isinstance(limit, int):
+            raise TypeError("limit must be an integer, not {!r}".format(limit))
+        if limit not in range(1, 2**32 + 1) or limit & limit - 1:
+            raise ValueError("limit must be a power of 2 (<= 2**32), not {:#x}".format(limit))
+        if base >= limit:
+            raise ValueError("limit {:#x} must be greater than base {:#x}"
+                             .format(limit, base))
 
         self.nways = nways
         self.nlines = nlines
@@ -24,7 +38,7 @@ class L1Cache(Elaboratable):
 
         offsetbits = log2_int(nwords)
         linebits = log2_int(nlines)
-        tagbits = log2_int(limit-base) - log2_int(nlines) - log2_int(nwords) - 2
+        tagbits = log2_int(limit) - linebits - offsetbits - 2
 
         self.s1_addr = Record([("offset", offsetbits), ("line", linebits), ("tag", tagbits)])
         self.s1_flush = Signal()

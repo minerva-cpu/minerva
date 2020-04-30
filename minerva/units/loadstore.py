@@ -155,9 +155,27 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
         dcache = m.submodules.dcache = L1Cache(*self.dcache_args)
 
         x_dcache_select = Signal()
+
+        # Test whether the target address is inside the L1 cache region. We use bit masks in order
+        # to avoid carry chains from arithmetic comparisons. This restricts the region boundaries
+        # to powers of 2.
+        with m.Switch(self.x_addr[2:]):
+            def addr_below(limit):
+                assert limit in range(1, 2**30 + 1)
+                range_bits = log2_int(limit)
+                const_bits = 30 - range_bits
+                return "{}{}".format("0" * const_bits, "-" * range_bits)
+
+            if dcache.base >= 4:
+                with m.Case(addr_below(dcache.base >> 2)):
+                    m.d.comb += x_dcache_select.eq(0)
+            with m.Case(addr_below(dcache.limit >> 2)):
+                m.d.comb += x_dcache_select.eq(1)
+            with m.Default():
+                m.d.comb += x_dcache_select.eq(0)
+
         m_dcache_select = Signal()
 
-        m.d.comb += x_dcache_select.eq((self.x_addr >= dcache.base) & (self.x_addr < dcache.limit))
         with m.If(~self.x_stall):
             m.d.sync += m_dcache_select.eq(x_dcache_select)
 
