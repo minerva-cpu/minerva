@@ -246,7 +246,7 @@ class Minerva(Elaboratable):
         cpu.d.comb += [
             pc_sel.f_pc.eq(f.sink.pc),
             pc_sel.d_pc.eq(d.sink.pc),
-            pc_sel.d_branch_predict_taken.eq(predict.d_branch_taken & ~predict.d_fetch_misaligned),
+            pc_sel.d_branch_predict_taken.eq(predict.d_branch_taken),
             pc_sel.d_branch_target.eq(predict.d_branch_target),
             pc_sel.d_valid.eq(d.valid),
             pc_sel.x_pc.eq(x.sink.pc),
@@ -596,7 +596,7 @@ class Minerva(Elaboratable):
             predict.d_rs1_re.eq(decoder.rs1_re)
         ]
 
-        a.kill_on(predict.d_branch_taken & ~predict.d_fetch_misaligned & d.valid)
+        a.kill_on(predict.d_branch_taken & d.valid)
         for s in a, f:
             s.kill_on(m.sink.branch_predict_taken & ~m.sink.branch_taken & m.valid)
         for s in a, f, d:
@@ -739,9 +739,10 @@ class Minerva(Elaboratable):
                 d.source.mret.eq(decoder.mret),
                 d.source.src1.eq(d_src1),
                 d.source.src2.eq(d_src2),
-                d.source.branch_predict_taken.eq(predict.d_branch_taken & ~predict.d_fetch_misaligned),
+                d.source.branch_predict_taken.eq(predict.d_branch_taken),
                 d.source.branch_target.eq(predict.d_branch_target)
             ]
+
             if self.with_muldiv:
                 cpu.d.sync += [
                     d.source.multiply.eq(decoder.multiply),
