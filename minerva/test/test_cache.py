@@ -85,6 +85,7 @@ class L1CacheSpec(Elaboratable):
         return m
 
 
+# FIXME: FHDLTestCase is internal to nMigen, we shouldn't use it.
 class L1CacheTestCase(FHDLTestCase):
     def check(self, cache):
         self.assertFormal(L1CacheSpec(cache), mode="bmc", depth=12)

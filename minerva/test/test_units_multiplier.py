@@ -1,6 +1,7 @@
+import unittest
+
 from nmigen import *
 from nmigen.back.pysim import *
-from nmigen.test.utils import *
 
 from ..units.multiplier import *
 from ..isa import Funct3
@@ -25,7 +26,7 @@ def test_op(funct3, src1, src2, result):
     return test
 
 
-class MultiplierTestCase(FHDLTestCase):
+class MultiplierTestCase(unittest.TestCase):
     def setUp(self):
         self.dut = Multiplier()
 
