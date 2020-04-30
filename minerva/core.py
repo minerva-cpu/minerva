@@ -56,13 +56,12 @@ _dx_layout = [
     ("rs1_re",               1),
     ("src1",                32),
     ("src2",                32),
-    ("immediate",           32),
+    ("store_operand",       32),
     ("bypass_x",             1),
     ("bypass_m",             1),
     ("funct3",               3),
     ("load",                 1),
     ("store",                1),
-    ("adder",                1),
     ("adder_sub",            1),
     ("logic",                1),
     ("multiply",             1),
@@ -327,9 +326,9 @@ class Minerva(Elaboratable):
         ]
 
         cpu.d.comb += [
-            adder.sub.eq(x.sink.adder & x.sink.adder_sub | x.sink.compare | x.sink.branch),
+            adder.sub.eq(x.sink.adder_sub),
             adder.src1.eq(x.sink.src1),
-            adder.src2.eq(Mux(x.sink.store, x.sink.immediate, x.sink.src2))
+            adder.src2.eq(x.sink.src2),
         ]
 
         if self.with_muldiv:
@@ -406,7 +405,7 @@ class Minerva(Elaboratable):
         cpu.d.comb += [
             data_sel.x_offset.eq(adder.result[:2]),
             data_sel.x_funct3.eq(x.sink.funct3),
-            data_sel.x_store_operand.eq(x.sink.src2),
+            data_sel.x_store_operand.eq(x.sink.store_operand),
             data_sel.w_offset.eq(w.sink.result[:2]),
             data_sel.w_funct3.eq(w.sink.funct3),
             data_sel.w_load_data.eq(w.sink.load_data)
@@ -715,14 +714,13 @@ class Minerva(Elaboratable):
                 d.source.rs1.eq(decoder.rs1),
                 d.source.rd_we.eq(decoder.rd_we),
                 d.source.rs1_re.eq(decoder.rs1_re),
-                d.source.immediate.eq(decoder.immediate),
                 d.source.bypass_x.eq(decoder.bypass_x),
                 d.source.bypass_m.eq(decoder.bypass_m),
                 d.source.funct3.eq(decoder.funct3),
                 d.source.load.eq(decoder.load),
                 d.source.store.eq(decoder.store),
-                d.source.adder.eq(decoder.adder),
-                d.source.adder_sub.eq(decoder.adder_sub),
+                d.source.adder_sub.eq(decoder.adder & decoder.adder_sub
+                                    | decoder.compare | decoder.branch),
                 d.source.compare.eq(decoder.compare),
                 d.source.logic.eq(decoder.logic),
                 d.source.shift.eq(decoder.shift),
@@ -738,7 +736,8 @@ class Minerva(Elaboratable):
                 d.source.ebreak.eq(decoder.ebreak),
                 d.source.mret.eq(decoder.mret),
                 d.source.src1.eq(d_src1),
-                d.source.src2.eq(d_src2),
+                d.source.src2.eq(Mux(decoder.store, decoder.immediate, d_src2)),
+                d.source.store_operand.eq(d_src2),
                 d.source.branch_predict_taken.eq(predict.d_branch_taken),
                 d.source.branch_target.eq(predict.d_branch_target)
             ]
