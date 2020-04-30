@@ -254,7 +254,7 @@ class InstructionDecoder(Elaboratable):
             self.illegal.eq((self.instruction[:2] != 0b11) | ~reduce(or_, (
                 self.compare, self.branch, self.adder, self.logic, self.multiply, self.divide, self.shift,
                 self.lui, self.auipc, self.jump, self.load, self.store,
-                self.csr, self.ecall, self.ebreak, self.mret
+                self.csr, self.ecall, self.ebreak, self.mret, self.fence_i,
             )))
         ]
 
