@@ -36,7 +36,7 @@ def main():
             type=int, choices=[1, 2], default=1,
             help="number of ways")
     icache_group.add_argument("--icache-nlines",
-            type=int, default=128,
+            type=int, default=32,
             help="number of lines")
     icache_group.add_argument("--icache-nwords",
             type=int, choices=[4, 8, 16], default=4,
@@ -53,7 +53,7 @@ def main():
             type=int, choices=[1, 2], default=1,
             help="number of ways")
     dcache_group.add_argument("--dcache-nlines",
-            type=int, default=128,
+            type=int, default=32,
             help="number of lines")
     dcache_group.add_argument("--dcache-nwords",
             type=int, choices=[4, 8, 16], default=4,

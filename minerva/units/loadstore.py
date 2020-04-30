@@ -144,10 +144,9 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
         self.dcache_args = dcache_args
 
         self.x_fence_i = Signal()
-        self.x_flush = Signal()
-        self.m_addr = Signal(32)
         self.m_load = Signal()
         self.m_store = Signal()
+        self.m_flush = Signal()
 
     def elaborate(self, platform):
         m = Module()
@@ -175,19 +174,23 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
                 m.d.comb += x_dcache_select.eq(0)
 
         m_dcache_select = Signal()
+        m_addr = Signal.like(self.x_addr)
 
         with m.If(~self.x_stall):
-            m.d.sync += m_dcache_select.eq(x_dcache_select)
+            m.d.sync += [
+                m_dcache_select.eq(x_dcache_select),
+                m_addr.eq(self.x_addr),
+            ]
 
         m.d.comb += [
             dcache.s1_addr.eq(self.x_addr[2:]),
-            dcache.s1_flush.eq(self.x_flush),
             dcache.s1_stall.eq(self.x_stall),
-            dcache.s1_valid.eq(self.x_valid & x_dcache_select),
-            dcache.s2_addr.eq(self.m_addr[2:]),
-            dcache.s2_re.eq(self.m_load),
-            dcache.s2_evict.eq(self.m_store),
-            dcache.s2_valid.eq(self.m_valid & m_dcache_select)
+            dcache.s1_valid.eq(self.x_valid),
+            dcache.s2_addr.eq(m_addr[2:]),
+            dcache.s2_re.eq(self.m_load & m_dcache_select),
+            dcache.s2_evict.eq(self.m_store & m_dcache_select),
+            dcache.s2_flush.eq(self.m_flush),
+            dcache.s2_valid.eq(self.m_valid),
         ]
 
         wrbuf_w_data = Record([("addr", 30), ("mask", 4), ("data", 32)])
@@ -273,14 +276,13 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
         with m.Else():
             m.d.comb += self.x_busy.eq(bare_port.cyc)
 
+        with m.If(self.m_flush):
+            m.d.comb += self.m_busy.eq(~dcache.s2_flush_ack)
         with m.If(self.m_load_error | self.m_store_error):
-            m.d.comb += [
-                self.m_busy.eq(0),
-                self.m_load_data.eq(0)
-            ]
+            m.d.comb += self.m_busy.eq(0)
         with m.Elif(m_dcache_select):
             m.d.comb += [
-                self.m_busy.eq(dcache.s2_re & dcache.s2_miss),
+                self.m_busy.eq(self.m_load & dcache.s2_miss),
                 self.m_load_data.eq(dcache.s2_rdata)
             ]
         with m.Else():

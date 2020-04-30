@@ -135,9 +135,9 @@ _mw_layout = [
 class Minerva(Elaboratable):
     def __init__(self, reset_address=0x00000000,
                 with_icache=False,
-                icache_nways=1, icache_nlines=256, icache_nwords=8, icache_base=0, icache_limit=2**31,
+                icache_nways=1, icache_nlines=32, icache_nwords=4, icache_base=0, icache_limit=2**31,
                 with_dcache=False,
-                dcache_nways=1, dcache_nlines=256, dcache_nwords=8, dcache_base=0, dcache_limit=2**31,
+                dcache_nways=1, dcache_nlines=32, dcache_nwords=4, dcache_base=0, dcache_limit=2**31,
                 with_muldiv=False,
                 with_debug=False,
                 with_trigger=False, nb_triggers=8,
@@ -275,13 +275,13 @@ class Minerva(Elaboratable):
         m.stall_on(fetch.f_busy & f.valid)
 
         if self.with_icache:
-            flush_icache = x.sink.fence_i & x.valid & ~x.stall
+            flush_icache = x.sink.fence_i & x.valid
             if self.with_debug:
                 flush_icache |= debug.resumereq
 
             cpu.d.comb += [
-                fetch.a_flush.eq(flush_icache),
-                fetch.f_pc.eq(f.sink.pc)
+                fetch.f_pc.eq(f.sink.pc),
+                fetch.a_flush.eq(flush_icache)
             ]
 
         cpu.d.comb += [
@@ -429,16 +429,13 @@ class Minerva(Elaboratable):
 
         if self.with_dcache:
             if self.with_debug:
-                cpu.d.comb += loadstore.x_flush.eq(debug.resumereq)
+                cpu.d.comb += loadstore.m_flush.eq(debug.resumereq)
 
             cpu.d.comb += [
                 loadstore.x_fence_i.eq(x.sink.fence_i),
-                loadstore.m_addr.eq(m.sink.result),
                 loadstore.m_load.eq(m.sink.load),
                 loadstore.m_store.eq(m.sink.store),
             ]
-
-            x.stall_on(loadstore.x_busy & x.valid)
 
         for s in a, f:
             s.kill_on(x.sink.fence_i & x.valid)

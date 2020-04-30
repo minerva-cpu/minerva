@@ -41,11 +41,11 @@ class L1Cache(Elaboratable):
         tagbits = log2_int(limit) - linebits - offsetbits - 2
 
         self.s1_addr = Record([("offset", offsetbits), ("line", linebits), ("tag", tagbits)])
-        self.s1_flush = Signal()
         self.s1_stall = Signal()
         self.s1_valid = Signal()
         self.s2_addr = Record.like(self.s1_addr)
         self.s2_re = Signal()
+        self.s2_flush = Signal()
         self.s2_evict = Signal()
         self.s2_valid = Signal()
         self.bus_valid = Signal()
@@ -53,6 +53,7 @@ class L1Cache(Elaboratable):
         self.bus_rdata = Signal(32)
 
         self.s2_miss = Signal()
+        self.s2_flush_ack = Signal()
         self.s2_rdata = Signal(32)
         self.bus_re = Signal()
         self.bus_addr = Record.like(self.s1_addr)
@@ -85,17 +86,25 @@ class L1Cache(Elaboratable):
             self.s2_rdata.eq(ways[way_hit.o].data.word_select(self.s2_addr.offset, 32))
         ]
 
+        flush_line = Signal(range(self.nlines), reset=self.nlines - 1)
+        with m.If(self.s1_valid & ~self.s1_stall):
+            m.d.sync += self.s2_flush_ack.eq(0)
+
         with m.FSM() as fsm:
             last_offset = Signal.like(self.s2_addr.offset)
 
             with m.State("CHECK"):
-                with m.If(self.s2_re & self.s2_miss & self.s2_valid):
-                    m.d.sync += [
-                        self.bus_addr.eq(self.s2_addr),
-                        self.bus_re.eq(1),
-                        last_offset.eq(self.s2_addr.offset - 1)
-                    ]
-                    m.next = "REFILL"
+                with m.If(self.s2_valid):
+                    with m.If(self.s2_flush & ~self.s2_flush_ack):
+                        m.d.sync += flush_line.eq(flush_line.reset)
+                        m.next = "FLUSH"
+                    with m.Elif(self.s2_re & self.s2_miss):
+                        m.d.sync += [
+                            self.bus_addr.eq(self.s2_addr),
+                            self.bus_re.eq(1),
+                            last_offset.eq(self.s2_addr.offset - 1)
+                        ]
+                        m.next = "REFILL"
 
             with m.State("REFILL"):
                 m.d.comb += self.bus_last.eq(self.bus_addr.offset == last_offset)
@@ -106,23 +115,19 @@ class L1Cache(Elaboratable):
                 with m.If(~self.bus_re & ~self.s1_stall):
                     m.next = "CHECK"
 
+            with m.State("FLUSH"):
+                with m.If(flush_line == 0):
+                    m.d.sync += self.s2_flush_ack.eq(1)
+                    m.next = "CHECK"
+                with m.Else():
+                    m.d.sync += flush_line.eq(flush_line - 1)
+
         if platform == "formal":
             with m.If(Initial()):
                 m.d.comb += Assume(fsm.ongoing("CHECK"))
 
         for way in ways:
-            valid_lines = Signal(self.nlines)
-
-            with m.If(self.s1_flush & self.s1_valid):
-                m.d.sync += valid_lines.eq(0)
-            with m.Elif(way.bus_re & self.bus_error):
-                m.d.sync += valid_lines.bit_select(self.bus_addr.line, 1).eq(0)
-            with m.Elif(way.bus_re & self.bus_valid & self.bus_last):
-                m.d.sync += valid_lines.bit_select(self.bus_addr.line, 1).eq(1)
-            with m.Elif(self.s2_evict & self.s2_valid & (way.tag == self.s2_addr.tag)):
-                m.d.sync += valid_lines.bit_select(self.s2_addr.line, 1).eq(0)
-
-            tag_mem = Memory(width=len(way.tag), depth=self.nlines)
+            tag_mem = Memory(width=1 + len(way.tag), depth=self.nlines)
             tag_rp = tag_mem.read_port()
             tag_wp = tag_mem.write_port()
             m.submodules += tag_rp, tag_wp
@@ -132,25 +137,42 @@ class L1Cache(Elaboratable):
             data_wp = data_mem.write_port(granularity=32)
             m.submodules += data_rp, data_wp
 
+            mem_rp_addr = Signal.like(self.s1_addr.line)
+            with m.If(self.s1_stall):
+                m.d.comb += mem_rp_addr.eq(self.s2_addr.line)
+            with m.Else():
+                m.d.comb += mem_rp_addr.eq(self.s1_addr.line)
+
             m.d.comb += [
-                tag_rp.addr.eq(Mux(self.s1_stall, self.s2_addr.line, self.s1_addr.line)),
-                data_rp.addr.eq(Mux(self.s1_stall, self.s2_addr.line, self.s1_addr.line)),
-
-                tag_wp.addr.eq(self.bus_addr.line),
-                tag_wp.en.eq(way.bus_re & self.bus_valid & self.bus_last),
-                tag_wp.data.eq(self.bus_addr.tag),
-
-                data_wp.addr.eq(self.bus_addr.line),
-                data_wp.en.bit_select(self.bus_addr.offset, 1).eq(way.bus_re & self.bus_valid),
-                data_wp.data.eq(self.bus_rdata << self.bus_addr.offset*32),
-
-                way.valid.eq(valid_lines.bit_select(self.s2_addr.line, 1)),
-                way.tag.eq(tag_rp.data),
-                way.data.eq(data_rp.data)
+                tag_rp.addr.eq(mem_rp_addr),
+                data_rp.addr.eq(mem_rp_addr),
+                Cat(way.tag, way.valid).eq(tag_rp.data),
+                way.data.eq(data_rp.data),
             ]
 
-            if platform == "formal":
-                with m.If(Initial()):
-                    m.d.comb += Assume(~valid_lines.bool())
+            with m.If(fsm.ongoing("FLUSH")):
+                m.d.comb += [
+                    tag_wp.addr.eq(flush_line),
+                    tag_wp.en.eq(1),
+                    tag_wp.data.eq(0),
+                ]
+            with m.Elif(way.bus_re):
+                m.d.comb += [
+                    tag_wp.addr.eq(self.bus_addr.line),
+                    tag_wp.en.eq(way.bus_re & self.bus_valid),
+                    tag_wp.data.eq(Cat(self.bus_addr.tag, self.bus_last & ~self.bus_error)),
+                ]
+            with m.Else():
+                m.d.comb += [
+                    tag_wp.addr.eq(self.s2_addr.line),
+                    tag_wp.en.eq(self.s2_evict & self.s2_valid & (way.tag == self.s2_addr.tag)),
+                    tag_wp.data.eq(0),
+                ]
+
+            m.d.comb += [
+                data_wp.addr.eq(self.bus_addr.line),
+                data_wp.en.bit_select(self.bus_addr.offset, 1).eq(way.bus_re & self.bus_valid),
+                data_wp.data.eq(Repl(self.bus_rdata, self.nwords)),
+            ]
 
         return m
