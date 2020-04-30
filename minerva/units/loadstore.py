@@ -209,22 +209,21 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
         m.d.comb += dbus_arbiter.bus.connect(self.dbus)
 
         wrbuf_port = dbus_arbiter.port(priority=0)
-        with m.If(wrbuf_port.cyc):
+        m.d.comb += [
+            wrbuf_port.cyc.eq(wrbuf.r_rdy),
+            wrbuf_port.we.eq(Const(1)),
+        ]
+        with m.If(wrbuf_port.stb):
             with m.If(wrbuf_port.ack | wrbuf_port.err):
-                m.d.sync += [
-                    wrbuf_port.cyc.eq(0),
-                    wrbuf_port.stb.eq(0)
-                ]
+                m.d.sync += wrbuf_port.stb.eq(0)
                 m.d.comb += wrbuf.r_en.eq(1)
         with m.Elif(wrbuf.r_rdy):
             m.d.sync += [
-                wrbuf_port.cyc.eq(1),
                 wrbuf_port.stb.eq(1),
                 wrbuf_port.adr.eq(wrbuf_r_data.addr),
                 wrbuf_port.sel.eq(wrbuf_r_data.mask),
                 wrbuf_port.dat_w.eq(wrbuf_r_data.data)
             ]
-        m.d.comb += wrbuf_port.we.eq(Const(1))
 
         dcache_port = dbus_arbiter.port(priority=1)
         m.d.comb += [
