@@ -10,17 +10,17 @@ __all__ = ["ExceptionUnit"]
 
 class ExceptionUnit(Elaboratable, AutoCSR):
     def __init__(self):
-        self.mstatus     = CSR(0x300, mstatus_layout, name="mstatus")
-        self.misa        = CSR(0x301, misa_layout, name="misa") # FIXME move elsewhere
-        self.mie         = CSR(0x304, mie_layout, name="mie")
-        self.mtvec       = CSR(0x305, mtvec_layout, name="mtvec")
-        self.mscratch    = CSR(0x340, flat_layout, name="mscratch") # FIXME move elsewhere
-        self.mepc        = CSR(0x341, mepc_layout, name="mepc")
-        self.mcause      = CSR(0x342, mcause_layout, name="mcause")
-        self.mtval       = CSR(0x343, flat_layout, name="mtval")
-        self.mip         = CSR(0x344, mip_layout, name="mip")
-        self.irq_mask    = CSR(0x330, flat_layout, name="irq_mask")
-        self.irq_pending = CSR(0x360, flat_layout, name="irq_pending")
+        self.mstatus     = CSR(0x300, mstatus_layout)
+        self.misa        = CSR(0x301, misa_layout) # FIXME move elsewhere
+        self.mie         = CSR(0x304, mie_layout)
+        self.mtvec       = CSR(0x305, mtvec_layout)
+        self.mscratch    = CSR(0x340, flat_layout) # FIXME move elsewhere
+        self.mepc        = CSR(0x341, mepc_layout)
+        self.mcause      = CSR(0x342, mcause_layout)
+        self.mtval       = CSR(0x343, flat_layout)
+        self.mip         = CSR(0x344, mip_layout)
+        self.irq_mask    = CSR(0x330, flat_layout)
+        self.irq_pending = CSR(0x360, flat_layout)
 
         self.external_interrupt = Signal(32)
         self.timer_interrupt = Signal()

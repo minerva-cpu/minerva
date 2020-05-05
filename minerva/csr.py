@@ -2,36 +2,40 @@ from enum import Enum
 from collections import OrderedDict
 
 from nmigen import *
-from nmigen.hdl.rec import *
 from nmigen.utils import bits_for
 
 
 __all__ = ["CSRAccess", "CSR", "AutoCSR", "CSRFile"]
 
 
-CSRAccess = Enum("CSRAccess", ("WIRI", "WPRI", "WLRL", "WARL"))
+class CSRAccess(Enum):
+    RW = 0
+    RO = 1
 
 
-class CSR():
-    def __init__(self, addr, description, name):
+class CSR(Record):
+    def __init__(self, addr, description, name=None, src_loc_at=0):
         fields = []
-        mask = 0
+        mask   = 0
         offset = 0
-        for name, shape, access in description:
+        for fname, shape, access in description:
             if isinstance(shape, int):
                 shape = shape, False
-            nbits, signed = shape
-            fields.append((name, shape))
-            if access in {CSRAccess.WLRL, CSRAccess.WARL}:
-                mask |= ((1 << nbits) - 1) << offset
-            offset += nbits
+            width, signed = shape
+            fields.append((fname, shape))
+            if access is CSRAccess.RW:
+                mask |= ((1 << width) - 1) << offset
+            offset += width
 
         self.addr = addr
-        self.rmask = self.wmask = Const(mask)
-        self.r = Record(fields)
-        self.w = Record(fields)
-        self.re = Signal()
-        self.we = Signal()
+        self.mask = mask
+
+        super().__init__([
+            ("r",  fields),
+            ("w",  fields),
+            ("re", 1),
+            ("we", 1),
+        ], name=name, src_loc_at=1 + src_loc_at)
 
 
 class AutoCSR():
@@ -61,12 +65,12 @@ class CSRFile(Elaboratable):
             self._csr_map[csr.addr] = csr
 
     def read_port(self):
-        port = Record([("addr", bits_for(self.depth)), ("en", 1), ("data", self.width)])
+        port = Record([("addr", bits_for(self.depth)), ("en", 1), ("data", self.width)], name="rp")
         self._read_ports.append(port)
         return port
 
     def write_port(self):
-        port = Record([("addr", bits_for(self.depth)), ("en", 1), ("data", self.width)])
+        port = Record([("addr", bits_for(self.depth)), ("en", 1), ("data", self.width)], name="wp")
         self._write_ports.append(port)
         return port
 
@@ -79,7 +83,7 @@ class CSRFile(Elaboratable):
                     with m.Case(addr):
                         m.d.comb += [
                             csr.re.eq(rp.en),
-                            rp.data.eq(csr.r & csr.rmask)
+                            rp.data.eq(csr.r)
                         ]
 
         for wp in self._write_ports:
@@ -88,7 +92,7 @@ class CSRFile(Elaboratable):
                     with m.Case(addr):
                         m.d.comb += [
                             csr.we.eq(wp.en),
-                            csr.w.eq(wp.data & csr.wmask)
+                            csr.w.eq(wp.data & csr.mask)
                         ]
 
         return m

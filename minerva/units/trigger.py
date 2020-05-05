@@ -43,9 +43,9 @@ class TriggerUnit(Elaboratable, AutoCSR):
     def __init__(self, nb_triggers):
         self.nb_triggers = nb_triggers
 
-        self.tselect = CSR(0x7a0, flat_layout, name="tselect")
-        self.tdata1  = CSR(0x7a1, tdata1_layout, name="tdata1")
-        self.tdata2  = CSR(0x7a2, flat_layout, name="tdata2")
+        self.tselect = CSR(0x7a0, flat_layout)
+        self.tdata1  = CSR(0x7a1, tdata1_layout)
+        self.tdata2  = CSR(0x7a2, flat_layout)
 
         self.x_pc = Signal(32)
         self.x_valid = Signal()
