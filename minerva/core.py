@@ -25,7 +25,7 @@ from .units.shifter import *
 from .units.trigger import *
 
 from .units.debug.jtag import jtag_layout
-from .wishbone import wishbone_layout
+from .wishbone import wishbone_layout, WishboneArbiter
 
 
 __all__ = ["Minerva"]
@@ -397,7 +397,10 @@ class Minerva(Elaboratable):
             # should be invisible to software execution.
             m_ebreak &= ~debug.dcsr_ebreakm
         if self.with_trigger:
-            m_ebreak |= trigger.trap
+            m_trigger_trap = Signal()
+            with cpu.If(~x.stall):
+                cpu.d.sync += m_trigger_trap.eq(trigger.x_trap)
+            m_ebreak |= m_trigger_trap
         cpu.d.comb += exception.m_ebreak.eq(m_ebreak)
 
         m.kill_on(m.source.exception & m.source.valid)
@@ -440,10 +443,14 @@ class Minerva(Elaboratable):
             s.kill_on(x.sink.fence_i & x.valid)
 
         if self.with_debug:
-            with cpu.If(debug.halt & debug.halted):
-                cpu.d.comb += debug.dbus.connect(self.dbus)
-            with cpu.Else():
-                cpu.d.comb += loadstore.dbus.connect(self.dbus)
+            cpu.submodules.dbus_arbiter = dbus_arbiter = WishboneArbiter()
+            debug_dbus_port = dbus_arbiter.port(priority=0)
+            loadstore_dbus_port = dbus_arbiter.port(priority=1)
+            cpu.d.comb += [
+                loadstore.dbus.connect(loadstore_dbus_port),
+                debug.dbus.connect(debug_dbus_port),
+                dbus_arbiter.bus.connect(self.dbus),
+            ]
         else:
             cpu.d.comb += loadstore.dbus.connect(self.dbus)
 

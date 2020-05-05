@@ -41,6 +41,12 @@ mcontrol_layout = [
 
 class TriggerUnit(Elaboratable, AutoCSR):
     def __init__(self, nb_triggers):
+        if not isinstance(nb_triggers, int):
+            raise TypeError("Number of triggers must be an int, not {!r}"
+                            .format(nb_triggers))
+        if nb_triggers == 0 or nb_triggers & nb_triggers - 1:
+            raise ValueError("Number of triggers must be a power of 2, not {!r}"
+                             .format(nb_triggers))
         self.nb_triggers = nb_triggers
 
         self.tselect = CSR(0x7a0, flat_layout)
@@ -51,7 +57,7 @@ class TriggerUnit(Elaboratable, AutoCSR):
         self.x_valid = Signal()
 
         self.haltreq = Signal()
-        self.trap = Signal()
+        self.x_trap = Signal()
 
     def elaborate(self, platform):
         m = Module()
@@ -80,7 +86,7 @@ class TriggerUnit(Elaboratable, AutoCSR):
                         do_trigger_update(t)
 
         with m.If(self.tselect.we):
-            with m.If(self.tselect.w.value < self.nb_triggers):
+            with m.If(self.tselect.w.value & (self.nb_triggers - 1)):
                 m.d.sync += self.tselect.r.value.eq(self.tselect.w.value)
 
         with m.If(self.tdata2.we):
@@ -93,6 +99,7 @@ class TriggerUnit(Elaboratable, AutoCSR):
             with m.Case(Type.MATCH):
                 mcontrol = Record(mcontrol_layout)
                 m.d.comb += mcontrol.eq(self.tdata1.r.data)
+
                 match = Signal()
                 with m.If(mcontrol.execute):
                     m.d.comb += match.eq(self.tdata2.r == self.x_pc & self.x_valid)
@@ -105,6 +112,6 @@ class TriggerUnit(Elaboratable, AutoCSR):
             with m.If(halt):
                 m.d.comb += self.haltreq.eq(self.tdata1.r.dmode)
             with m.Else():
-                m.d.comb += self.trap.eq(1)
+                m.d.comb += self.x_trap.eq(1)
 
         return m

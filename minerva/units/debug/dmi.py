@@ -1,13 +1,6 @@
 from enum import Enum
 
 
-__all__ = [
-    "Version", "Command", "Error", "RegMode", "DmiOp", "DebugReg", "dmstatus_layout",
-    "dmcontrol_layout", "abstractcs_layout", "cmd_access_reg_layout", "command_layout",
-    "sbcs_layout", "flat_layout"
-]
-
-
 class Version:
     NONE  = 0
     V011  = 1
@@ -45,12 +38,16 @@ class DebugReg:
     DMCONTROL  = 0x10
     DMSTATUS   = 0x11
     HARTINFO   = 0x12
+    HALTSUM1   = 0x13
     ABSTRACTCS = 0x16
     COMMAND    = 0x17
     PROGBUF0   = 0x20
+    HALTSUM2   = 0x34
+    HALTSUM3   = 0x35
     SBCS       = 0x38
     SBADDRESS0 = 0x39
     SBDATA0    = 0x3c
+    HALTSUM0   = 0x40
 
 
 dmstatus_layout = [
@@ -83,8 +80,8 @@ dmcontrol_layout = [
     ("clrresethaltreq",   1, RegMode.W1,   False),
     ("setresethaltreq",   1, RegMode.W1,   False),
     ("zero0",             2, RegMode.R,    0),
-    ("hartselhi",        10, RegMode.RW,   0),
-    ("hartsello",        10, RegMode.RW,   0),
+    ("hartselhi",        10, RegMode.R,    0),
+    ("hartsello",        10, RegMode.R,    0),
     ("hasel",             1, RegMode.RW,   False),
     ("zero1",             1, RegMode.R,    0),
     ("ackhavereset",      1, RegMode.W1,   False),

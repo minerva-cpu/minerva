@@ -13,12 +13,6 @@ class DmiOp:
     WRITE = 2
 
 
-class DmiResult:
-    OK   = 0
-    FAIL = 2
-    BUSY = 3
-
-
 reg_map = {
     DebugReg.DMSTATUS:   dmstatus_layout,
     DebugReg.DMCONTROL:  dmcontrol_layout,
@@ -28,7 +22,9 @@ reg_map = {
     DebugReg.SBCS:       sbcs_layout,
     DebugReg.SBADDRESS0: flat_layout,
     DebugReg.SBDATA0:    flat_layout,
-    DebugReg.DATA0:      flat_layout
+    DebugReg.DATA0:      flat_layout,
+    DebugReg.HALTSUM0:   flat_layout,
+    DebugReg.HALTSUM1:   flat_layout,
 }
 
 
@@ -37,13 +33,14 @@ class DebugRegisterFile(Elaboratable):
         self.dmi = dmi
         self.ports = dict()
 
-    def reg_port(self, addr):
+    def reg_port(self, addr, name=None, src_loc_at=0):
         if addr not in reg_map:
             raise ValueError("Unknown register {:x}.".format(addr))
         if addr in self.ports:
             raise ValueError("Register {:x} has already been allocated.".format(addr))
         layout = [f[:2] for f in reg_map[addr]]
-        port = Record([("r", layout), ("w", layout), ("update", 1), ("capture", 1)])
+        port = Record([("r", layout), ("w", layout), ("update", 1), ("capture", 1)],
+                      name=name, src_loc_at=1 + src_loc_at)
         for name, shape, mode, reset in reg_map[addr]:
             getattr(port.r, name).reset = reset
             getattr(port.w, name).reset = reset
@@ -88,10 +85,6 @@ class DebugRegisterFile(Elaboratable):
                             do_read(addr, port)
                         with m.Elif(self.dmi.w.op == DmiOp.WRITE):
                             do_write(addr, port)
-                        m.d.sync += self.dmi.r.op.eq(DmiResult.OK)
-                with m.Case():
-                    # Invalid register.
-                    m.d.sync += self.dmi.r.op.eq(DmiResult.FAIL)
 
         for port in self.ports.values():
             with m.If(port.update):

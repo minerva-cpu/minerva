@@ -90,9 +90,9 @@ class CSRFile(Elaboratable):
             with m.Switch(wp.addr):
                 for addr, csr in self._csr_map.items():
                     with m.Case(addr):
-                        m.d.comb += [
-                            csr.we.eq(wp.en),
-                            csr.w.eq(wp.data & csr.mask)
-                        ]
+                        m.d.comb += csr.we.eq(wp.en)
+                        for i in range(self.width):
+                            rw = (1 << i) & csr.mask
+                            m.d.comb += csr.w[i].eq(wp.data[i] if rw else csr.r[i])
 
         return m

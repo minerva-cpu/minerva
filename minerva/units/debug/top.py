@@ -6,7 +6,6 @@ from ...csr import *
 from ...isa import *
 from ...wishbone import wishbone_layout
 from .controller import *
-from .dmi import *
 from .jtag import *
 from .regfile import *
 from .wbmaster import *
@@ -66,6 +65,9 @@ class DebugUnit(Elaboratable, AutoCSR):
         self.gprf_we = Signal()
         self.gprf_dat_w = Signal(32)
 
+        self.dcsr = CSR(0x7b0, dcsr_layout)
+        self.dpc  = CSR(0x7b1, flat_layout)
+
     def elaborate(self, platform):
         m = Module()
 
@@ -78,10 +80,20 @@ class DebugUnit(Elaboratable, AutoCSR):
         m.d.comb += [
             tap.port.connect(self.jtag),
             tap.regs[JTAGReg.IDCODE].r.eq(0x10e31913), # Usurpate a Spike core for now.
-            tap.regs[JTAGReg.DTMCS].r.eq(0x61) # (abits=6, version=1) TODO
+            tap.regs[JTAGReg.DTMCS].r.eq(0x71) # (abits=7, version=1) TODO
         ]
 
+        self.dcsr.r.xdebugver.reset = 4 # Use debug spec v0.13
+        with m.If(self.dcsr.we):
+            m.d.sync += self.dcsr.r.eq(self.dcsr.w)
+        with m.If(controller.dcsr_we):
+            m.d.sync += self.dcsr.r.eq(controller.dcsr_w)
+
+        with m.If(controller.dpc_we):
+            m.d.sync += self.dpc.r.eq(controller.dpc_w)
+
         m.d.comb += [
+            controller.dcsr_r.eq(self.dcsr.r),
             controller.trigger_haltreq.eq(self.trigger_haltreq),
 
             controller.x_ebreak.eq(self.x_ebreak),
@@ -99,9 +111,9 @@ class DebugUnit(Elaboratable, AutoCSR):
             self.resumereq.eq(controller.resumereq),
             controller.resumeack.eq(self.resumeack),
 
-            self.dcsr_step.eq(controller.dcsr.r.step),
-            self.dcsr_ebreakm.eq(controller.dcsr.r.ebreakm),
-            self.dpc_value.eq(controller.dpc.r.value),
+            self.dcsr_step.eq(self.dcsr.r.step),
+            self.dcsr_ebreakm.eq(self.dcsr.r.ebreakm),
+            self.dpc_value.eq(self.dpc.r.value),
 
             self.csrf_addr.eq(controller.csrf_addr),
             self.csrf_re.eq(controller.csrf_re),

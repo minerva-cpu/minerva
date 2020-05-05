@@ -37,5 +37,5 @@ dtmcs_layout = [
 dmi_layout = [
     ("op",    2),
     ("data", 32),
-    ("addr",  6)
+    ("addr",  7),
 ]

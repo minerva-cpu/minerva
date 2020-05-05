@@ -21,10 +21,13 @@ class HaltCause:
 cause_map = [2, 1, 5, 3, 4]
 
 
-class DebugController(Elaboratable, AutoCSR):
+class DebugController(Elaboratable):
     def __init__(self, debugrf):
-        self.dcsr = CSR(0x7b0, dcsr_layout, name="dcsr")
-        self.dpc  = CSR(0x7b1, flat_layout, name="dpc")
+        self.dcsr_we    = Signal()
+        self.dcsr_w     = Record((fname, shape) for (fname, shape, mode) in dcsr_layout)
+        self.dcsr_r     = Record.like(self.dcsr_w)
+        self.dpc_we     = Signal()
+        self.dpc_w      = Signal(32)
 
         self.dmstatus   = debugrf.reg_port(DebugReg.DMSTATUS)
         self.dmcontrol  = debugrf.reg_port(DebugReg.DMCONTROL)
@@ -32,6 +35,7 @@ class DebugController(Elaboratable, AutoCSR):
         self.abstractcs = debugrf.reg_port(DebugReg.ABSTRACTCS)
         self.command    = debugrf.reg_port(DebugReg.COMMAND)
         self.data0      = debugrf.reg_port(DebugReg.DATA0)
+        self.haltsum0   = debugrf.reg_port(DebugReg.HALTSUM0)
 
         self.trigger_haltreq = Signal()
 
@@ -69,10 +73,6 @@ class DebugController(Elaboratable, AutoCSR):
     def elaborate(self, platform):
         m = Module()
 
-        for csr in self.dcsr, self.dpc:
-            with m.If(csr.we):
-                m.d.sync += csr.r.eq(csr.w)
-
         with m.If(self.dmcontrol.update):
             m.d.sync += [
                 self.dmcontrol.w.dmactive.eq(self.dmcontrol.r.dmactive),
@@ -81,55 +81,64 @@ class DebugController(Elaboratable, AutoCSR):
                 self.dmcontrol.w.hartsello.eq(self.dmcontrol.r.hartsello),
                 self.dmcontrol.w.hasel.eq(self.dmcontrol.r.hasel),
                 self.dmcontrol.w.hartreset.eq(self.dmcontrol.r.hartreset),
-                self.dmcontrol.w.resumereq.eq(self.dmcontrol.r.resumereq)
+                self.dmcontrol.w.resumereq.eq(self.dmcontrol.r.resumereq),
             ]
 
         with m.If(self.abstractcs.update):
             m.d.sync += self.abstractcs.w.cmderr.eq(self.abstractcs.r.cmderr)
 
+        with m.If(self.data0.update):
+            m.d.sync += self.data0.w.eq(self.data0.r)
+
         m.d.comb += [
             self.dmstatus.w.version.eq(Version.V013),
             self.dmstatus.w.authenticated.eq(1),
-            self.resumereq.eq(self.dmcontrol.w.resumereq)
+            self.resumereq.eq(self.dmcontrol.w.resumereq),
+            self.haltsum0.w[0].eq(self.dmstatus.w.allhalted),
         ]
 
         m_breakpoint = Signal()
         with m.If(~self.x_stall):
-            m.d.comb += m_breakpoint.eq(self.x_ebreak & self.dcsr.r.ebreakm)
+            m.d.comb += m_breakpoint.eq(self.x_ebreak & self.dcsr_r.ebreakm)
 
         halt_pe = m.submodules.halt_pe = PriorityEncoder(5)
         m.d.comb += [
             halt_pe.i[HaltCause.EBREAK].eq(m_breakpoint & self.m_valid),
             halt_pe.i[HaltCause.TRIGGER].eq(self.trigger_haltreq),
             halt_pe.i[HaltCause.HALTREQ].eq(self.dmcontrol.r.haltreq),
-            halt_pe.i[HaltCause.STEP].eq(self.dcsr.r.step & self.m_valid),
+            halt_pe.i[HaltCause.STEP].eq(self.dcsr_r.step & self.m_valid),
         ]
 
         with m.FSM():
             with m.State("RUN"):
                 m.d.comb += self.dmstatus.w.allrunning.eq(1)
+                m.d.comb += self.dmstatus.w.anyrunning.eq(1)
                 with m.If(~halt_pe.n):
-                    m.d.sync += [
-                        self.halt.eq(1),
-                        self.dcsr.r.cause.eq(Array(cause_map)[halt_pe.o]),
-                        self.dcsr.r.stepie.eq(1)
+                    m.d.sync += self.halt.eq(1)
+                    m.d.comb += [
+                        self.dcsr_we.eq(1),
+                        self.dcsr_w.eq(self.dcsr_r),
+                        self.dcsr_w.cause.eq(Array(cause_map)[halt_pe.o]),
+                        self.dcsr_w.stepie.eq(1)
                     ]
+                    m.d.comb += self.dpc_we.eq(1)
                     with m.If(halt_pe.o == HaltCause.EBREAK):
-                        m.d.sync += self.dpc.r.eq(self.m_pc)
+                        m.d.comb += self.dpc_w.eq(self.m_pc)
                     with m.Elif(self.m_exception & self.m_valid):
-                        m.d.sync += self.dpc.r.eq(self.mtvec_r_base << 30)
+                        m.d.comb += self.dpc_w.eq(self.mtvec_r_base << 2)
                     with m.Elif(self.m_mret & self.m_valid):
-                        m.d.sync += self.dpc.r.eq(self.mepc_r_base << 30)
+                        m.d.comb += self.dpc_w.eq(self.mepc_r_base << 2)
                     with m.Elif(self.m_branch_taken & self.m_valid):
-                        m.d.sync += self.dpc.r.eq(self.m_branch_target)
+                        m.d.comb += self.dpc_w.eq(self.m_branch_target)
                     with m.Else():
-                        m.d.sync += self.dpc.r.eq(self.x_pc)
+                        m.d.comb += self.dpc_w.eq(self.x_pc)
                     m.next = "HALTING"
 
             with m.State("HALTING"):
                 with m.If(self.halted):
                     m.d.comb += self.killall.eq(1)
                     m.d.sync += self.dmstatus.w.allhalted.eq(1)
+                    m.d.sync += self.dmstatus.w.anyhalted.eq(1)
                     m.next = "WAIT"
 
             with m.State("WAIT"):
@@ -144,8 +153,10 @@ class DebugController(Elaboratable, AutoCSR):
                     m.d.sync += [
                         self.dmcontrol.w.resumereq.eq(0),
                         self.dmstatus.w.allresumeack.eq(1),
+                        self.dmstatus.w.anyresumeack.eq(1),
                         self.halt.eq(0),
-                        self.dmstatus.w.allhalted.eq(0)
+                        self.dmstatus.w.allhalted.eq(0),
+                        self.dmstatus.w.anyhalted.eq(0),
                     ]
                     m.next = "RUN"
 
@@ -166,7 +177,7 @@ class DebugController(Elaboratable, AutoCSR):
                 with m.If(control.postexec | (control.aarsize != 2) | control.aarpostincrement):
                     # Unsupported parameters.
                     m.d.sync += self.abstractcs.w.cmderr.eq(Error.EXCEPTION)
-                with m.Elif((control.regno >= 0x0000) & (control.regno < 0x1000)):
+                with m.Elif(control.regno.matches("0000------------")):
                     with m.If(control.transfer):
                         m.d.comb += self.csrf_addr.eq(control.regno)
                         with m.If(control.write):
@@ -178,7 +189,7 @@ class DebugController(Elaboratable, AutoCSR):
                             m.d.comb += self.csrf_re.eq(1)
                             m.d.sync += self.data0.w.eq(self.csrf_dat_r)
                     m.d.sync += self.abstractcs.w.cmderr.eq(Error.NONE)
-                with m.Elif((control.regno >= 0x1000) & (control.regno < 0x1020)):
+                with m.Elif(control.regno.matches("00010000000-----")):
                     with m.If(control.transfer):
                         m.d.comb += self.gprf_addr.eq(control.regno)
                         with m.If(control.write):
