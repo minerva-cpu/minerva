@@ -10,7 +10,7 @@ Minerva currently requires Python 3.6+ and [nMigen][2] on its `master` branch.
 
     # generate verilog
     python setup.py develop
-    python cli.py generate > minerva.v
+    python cli.py generate -t v > minerva.v
 
     # run some tests
     python setup.py test
