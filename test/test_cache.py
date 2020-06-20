@@ -1,9 +1,8 @@
 from nmigen import *
-from nmigen.test.utils import *
 from nmigen.asserts import *
 
-from ..cache import L1Cache
-
+from minerva.cache import L1Cache
+from minerva.fhdltestcase import FHDLTestCase
 
 class L1CacheSpec(Elaboratable):
     def __init__(self, cache):
@@ -84,8 +83,6 @@ class L1CacheSpec(Elaboratable):
 
         return m
 
-
-# FIXME: FHDLTestCase is internal to nMigen, we shouldn't use it.
 class L1CacheTestCase(FHDLTestCase):
     def check(self, cache):
         self.assertFormal(L1CacheSpec(cache), mode="bmc", depth=12)

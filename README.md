@@ -8,8 +8,13 @@ Minerva is a CPU core that currently implements the [RISC-V][1] RV32IM instructi
 
 Minerva currently requires Python 3.6+ and [nMigen][2] on its `master` branch.
 
-    python setup.py install
+    # generate verilog
+    python setup.py develop
     python cli.py generate > minerva.v
+
+    # run some tests
+    python setup.py test
+    python -m unittest test/test_cache.py
 
 To use Minerva in its minimal configuration, you need to wire the following ports to `minerva_cpu`:
 

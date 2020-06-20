@@ -4,7 +4,7 @@ __pycache__/
 /.eggs
 
 # tests
-**/test/spec_*/
+test/spec_*/
 *.vcd
 *.gtkw
 
@@ -12,3 +12,6 @@ __pycache__/
 *.il
 *.v
 /build
+
+# macOS
+*.DS_Store
