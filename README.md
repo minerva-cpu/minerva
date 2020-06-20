@@ -12,6 +12,9 @@ Minerva currently requires Python 3.6+ and [nMigen][2] on its `master` branch.
     python setup.py develop
     python cli.py generate -t v > minerva.v
 
+    # generate verilog with cache
+    python cli.py --with-icache generate -t v > minerva.v
+
     # run some tests
     python setup.py test
     python -m unittest test/test_cache.py
@@ -25,6 +28,9 @@ To use Minerva in its minimal configuration, you need to wire the following port
 * `external_interrupt`
 * `timer_interrupt`
 * `software_interrupt`
+
+For an example of Minerva running some code, see 
+[here](https://github.com/jfng/minerva-examples).
 
 ### Features
 
