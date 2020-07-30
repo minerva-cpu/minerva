@@ -230,6 +230,7 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
             dcache_port.cyc.eq(dcache.bus_re),
             dcache_port.stb.eq(dcache.bus_re),
             dcache_port.adr.eq(dcache.bus_addr),
+            dcache_port.sel.eq(0b1111),
             dcache_port.cti.eq(Mux(dcache.bus_last, Cycle.END, Cycle.INCREMENT)),
             dcache_port.bte.eq(Const(log2_int(dcache.nwords) - 1)),
             dcache.bus_valid.eq(dcache_port.ack),

@@ -93,6 +93,7 @@ class BareFetchUnit(FetchUnitInterface, Elaboratable):
                 self.ibus.cyc.eq(1),
                 self.ibus.stb.eq(1)
             ]
+        m.d.comb += self.ibus.sel.eq(0b1111)
 
         with m.If(self.ibus.cyc & self.ibus.err):
             m.d.sync += [
@@ -177,6 +178,7 @@ class CachedFetchUnit(FetchUnitInterface, Elaboratable):
             icache_port.cyc.eq(icache.bus_re),
             icache_port.stb.eq(icache.bus_re),
             icache_port.adr.eq(icache.bus_addr),
+            icache_port.sel.eq(0b1111),
             icache_port.cti.eq(Mux(icache.bus_last, Cycle.END, Cycle.INCREMENT)),
             icache_port.bte.eq(Const(log2_int(icache.nwords) - 1)),
             icache.bus_valid.eq(icache_port.ack),
@@ -199,6 +201,7 @@ class CachedFetchUnit(FetchUnitInterface, Elaboratable):
                 bare_port.stb.eq(1),
                 bare_port.adr.eq(self.a_pc[2:])
             ]
+        m.d.comb += bare_port.sel.eq(0b1111)
 
         m.d.comb += self.a_busy.eq(bare_port.cyc)
 
