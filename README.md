@@ -6,7 +6,7 @@ Minerva is a CPU core that currently implements the [RISC-V][1] RV32IM instructi
 
 ### Quick start
 
-Minerva currently requires Python 3.6+ and [nMigen][2] on its `master` branch.
+Minerva requires Python 3.6+ and [nMigen][2]. Installation instructions for nMigen can be found [here](https://nmigen.info/nmigen/latest/install.html).
 
     python setup.py install
     python cli.py generate > minerva.v
@@ -69,6 +69,10 @@ The following parameters can be used to configure the Minerva core.
 | `nb_triggers`     | `8`            | Number of triggers                                 |
 | `with_rvfi`       | `False`        | Enable the riscv-formal interface                  |
 
+### Testing
+
+A riscv-formal testbench for Minerva is available [here](https://github.com/jfng/riscv-formal/tree/minerva/cores/minerva).
+
 ### Possible improvements
 
 In no particular order:
@@ -87,5 +91,5 @@ Minerva is released under the permissive two-clause BSD license.
 See LICENSE file for full copyright and license information.
 
 [1]: https://riscv.org/specifications/
-[2]: https://github.com/m-labs/nmigen/
+[2]: https://github.com/nmigen/nmigen/
 [3]: https://github.com/m-labs/lm32/
