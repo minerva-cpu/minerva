@@ -32,28 +32,31 @@ class PCSelector(Elaboratable):
     def elaborate(self, platform):
         m = Module()
 
-        m_sel  = Signal(reset=1)
-        m_a_pc = Signal(32)
+        m_sel   = Signal(reset=1)
+        m_pc4_a = Signal(30)
+        a_pc4   = Signal(30)
 
         with m.If(self.m_exception):
-            m.d.comb += m_a_pc[2:].eq(self.mtvec_r_base)
+            m.d.comb += m_pc4_a.eq(self.mtvec_r_base)
         with m.Elif(self.m_mret):
-            m.d.comb += m_a_pc[2:].eq(self.mepc_r_base)
+            m.d.comb += m_pc4_a.eq(self.mepc_r_base)
         with m.Elif(self.m_branch_predict_taken & ~self.m_branch_taken):
-            m.d.comb += m_a_pc[2:].eq(self.x_pc[2:])
+            m.d.comb += m_pc4_a.eq(self.x_pc[2:])
         with m.Elif(~self.m_branch_predict_taken & self.m_branch_taken):
-            m.d.comb += m_a_pc[2:].eq(self.m_branch_target[2:]),
+            m.d.comb += m_pc4_a.eq(self.m_branch_target[2:]),
         with m.Else():
             m.d.comb += m_sel.eq(0)
 
         with m.If(m_sel & self.m_valid):
-            m.d.comb += self.a_pc[2:].eq(m_a_pc[2:])
+            m.d.comb += a_pc4.eq(m_pc4_a)
         with m.Elif(self.x_fence_i & self.x_valid):
-            m.d.comb += self.a_pc[2:].eq(self.d_pc[2:])
+            m.d.comb += a_pc4.eq(self.d_pc[2:])
         with m.Elif(self.d_branch_predict_taken & self.d_valid):
-            m.d.comb += self.a_pc[2:].eq(self.d_branch_target[2:]),
+            m.d.comb += a_pc4.eq(self.d_branch_target[2:]),
         with m.Else():
-            m.d.comb += self.a_pc[2:].eq(self.f_pc[2:] + 1)
+            m.d.comb += a_pc4.eq(self.f_pc[2:] + 1)
+
+        m.d.comb += self.a_pc[2:].eq(a_pc4)
 
         return m
 
