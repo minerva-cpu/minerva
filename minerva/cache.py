@@ -108,12 +108,14 @@ class L1Cache(Elaboratable):
 
             with m.State("REFILL"):
                 m.d.comb += self.bus_last.eq(self.bus_addr.offset == last_offset)
-                with m.If(self.bus_valid):
-                    m.d.sync += self.bus_addr.offset.eq(self.bus_addr.offset + 1)
-                with m.If(self.bus_valid & self.bus_last | self.bus_error):
+                with m.If(~self.s1_stall):
                     m.d.sync += self.bus_re.eq(0)
-                with m.If(~self.bus_re & ~self.s1_stall):
                     m.next = "CHECK"
+                with m.Else():
+                    with m.If(self.bus_valid):
+                        m.d.sync += self.bus_addr.offset.eq(self.bus_addr.offset + 1)
+                    with m.If(self.bus_valid & self.bus_last | self.bus_error):
+                        m.d.sync += self.bus_re.eq(0)
 
             with m.State("FLUSH"):
                 with m.If(flush_line == 0):
