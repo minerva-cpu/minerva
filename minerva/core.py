@@ -323,9 +323,11 @@ class Minerva(Elaboratable):
         ]
 
         cpu.d.comb += [
-            adder.sub.eq(x.sink.adder_sub),
-            adder.src1.eq(x.sink.src1),
-            adder.src2.eq(x.sink.src2),
+            adder.d_sub.eq(decoder.adder & decoder.adder_sub
+                         | decoder.compare | decoder.branch),
+            adder.d_stall.eq(d.stall),
+            adder.x_src1.eq(x.sink.src1),
+            adder.x_src2.eq(x.sink.src2),
         ]
 
         if self.with_muldiv:
@@ -360,9 +362,9 @@ class Minerva(Elaboratable):
             # compare.op is shared by compare and branch instructions.
             compare.op.eq(Mux(x.sink.compare, x.sink.funct3 << 1, x.sink.funct3)),
             compare.zero.eq(x.sink.src1 == x.sink.src2),
-            compare.negative.eq(adder.result[-1]),
-            compare.overflow.eq(adder.overflow),
-            compare.carry.eq(adder.carry)
+            compare.negative.eq(adder.x_result[-1]),
+            compare.overflow.eq(adder.x_overflow),
+            compare.carry.eq(adder.x_carry)
         ]
 
         cpu.d.comb += [
@@ -404,7 +406,7 @@ class Minerva(Elaboratable):
         m.kill_on(m.source.exception & m.source.valid)
 
         cpu.d.comb += [
-            data_sel.x_offset.eq(adder.result[:2]),
+            data_sel.x_offset.eq(adder.x_result[:2]),
             data_sel.x_funct3.eq(x.sink.funct3),
             data_sel.x_store_operand.eq(x.sink.store_operand),
             data_sel.w_offset.eq(w.sink.result[:2]),
@@ -413,7 +415,7 @@ class Minerva(Elaboratable):
         ]
 
         cpu.d.comb += [
-            loadstore.x_addr.eq(adder.result),
+            loadstore.x_addr.eq(adder.x_result),
             loadstore.x_mask.eq(data_sel.x_mask),
             loadstore.x_load.eq(x.sink.load),
             loadstore.x_store.eq(x.sink.store),
@@ -504,7 +506,7 @@ class Minerva(Elaboratable):
         with cpu.Elif(x.sink.csr):
             cpu.d.comb += x_result.eq(x.sink.src2)
         with cpu.Else():
-            cpu.d.comb += x_result.eq(adder.result)
+            cpu.d.comb += x_result.eq(adder.x_result)
 
         with cpu.If(m.sink.compare):
             cpu.d.comb += m_result.eq(m.sink.condition_met)
@@ -776,7 +778,7 @@ class Minerva(Elaboratable):
                 x.source.mret.eq(x.sink.mret),
                 x.source.condition_met.eq(compare.condition_met),
                 x.source.branch_taken.eq(x.sink.jump | x.sink.branch & compare.condition_met),
-                x.source.branch_target.eq(Mux(x.sink.jump & x.sink.rs1_re, adder.result[1:] << 1, x.sink.branch_target)),
+                x.source.branch_target.eq(Mux(x.sink.jump & x.sink.rs1_re, adder.x_result[1:] << 1, x.sink.branch_target)),
                 x.source.branch_predict_taken.eq(x.sink.branch_predict_taken),
                 x.source.csr.eq(x.sink.csr),
                 x.source.csr_adr.eq(x.sink.csr_adr),
