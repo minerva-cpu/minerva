@@ -73,7 +73,7 @@ class FetchUnitInterface:
 
         self.a_busy = Signal()
         self.f_busy = Signal()
-        self.f_instruction = Signal(32, reset=0x00000013) # nop (addi x0, x0, 0)
+        self.f_instruction = Signal(32)
         self.f_fetch_error = Signal()
         self.f_badaddr = Signal(30)
 
@@ -109,7 +109,10 @@ class BareFetchUnit(FetchUnitInterface, Elaboratable):
         m.d.comb += self.a_busy.eq(self.ibus.cyc)
 
         with m.If(self.f_fetch_error):
-            m.d.comb += self.f_busy.eq(0)
+            m.d.comb += [
+                self.f_busy.eq(0),
+                self.f_instruction.eq(0x00000013), # nop (addi x0, x0, 0)
+            ]
         with m.Else():
             m.d.comb += [
                 self.f_busy.eq(self.ibus.cyc),
@@ -217,18 +220,19 @@ class CachedFetchUnit(FetchUnitInterface, Elaboratable):
             m.d.sync += self.f_fetch_error.eq(0)
 
         with m.If(f_flush):
-            m.d.comb += self.f_busy.eq(~icache.s2_flush_ack)
+            m.d.comb += self.f_busy.eq(f_icache_select & ~icache.s2_flush_ack)
         with m.Elif(self.f_fetch_error):
             m.d.comb += self.f_busy.eq(0)
         with m.Elif(f_icache_select):
-            m.d.comb += [
-                self.f_busy.eq(icache.s2_miss),
-                self.f_instruction.eq(icache.s2_rdata)
-            ]
+            m.d.comb += self.f_busy.eq(icache.s2_miss)
         with m.Else():
-            m.d.comb += [
-                self.f_busy.eq(bare_port.cyc),
-                self.f_instruction.eq(bare_rdata)
-            ]
+            m.d.comb += self.f_busy.eq(bare_port.cyc)
+
+        with m.If(self.f_fetch_error):
+            m.d.comb += self.f_instruction.eq(0x00000013) # nop (addi x0, x0, 0)
+        with m.Elif(f_icache_select):
+            m.d.comb += self.f_instruction.eq(icache.s2_rdata)
+        with m.Else():
+            m.d.comb += self.f_instruction.eq(bare_rdata)
 
         return m

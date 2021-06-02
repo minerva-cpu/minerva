@@ -277,18 +277,19 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
             m.d.comb += self.x_busy.eq(bare_port.cyc)
 
         with m.If(self.m_flush):
-            m.d.comb += self.m_busy.eq(~dcache.s2_flush_ack)
-        with m.If(self.m_load_error | self.m_store_error):
+            m.d.comb += self.m_busy.eq(m_dcache_select & ~dcache.s2_flush_ack)
+        with m.Elif(self.m_load_error | self.m_store_error):
             m.d.comb += self.m_busy.eq(0)
         with m.Elif(m_dcache_select):
-            m.d.comb += [
-                self.m_busy.eq(self.m_load & dcache.s2_miss),
-                self.m_load_data.eq(dcache.s2_rdata)
-            ]
+            m.d.comb += self.m_busy.eq(self.m_load & dcache.s2_miss)
         with m.Else():
-            m.d.comb += [
-                self.m_busy.eq(bare_port.cyc),
-                self.m_load_data.eq(bare_rdata)
-            ]
+            m.d.comb += self.m_busy.eq(bare_port.cyc)
+
+        with m.If(self.m_load_error):
+            m.d.comb += self.m_load_data.eq(0)
+        with m.Elif(m_dcache_select):
+            m.d.comb += self.m_load_data.eq(dcache.s2_rdata)
+        with m.Else():
+            m.d.comb += self.m_load_data.eq(bare_rdata)
 
         return m
