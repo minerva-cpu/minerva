@@ -8,6 +8,7 @@ from nmigen.lib.coding import PriorityEncoder
 from .isa import *
 from .stage import *
 from .csr import *
+from . import gpr
 
 from .units.adder import *
 from .units.compare import *
@@ -224,11 +225,7 @@ class Minerva(Elaboratable):
 
         # register files
 
-        gprf = Memory(width=32, depth=32)
-        gprf_rp1 = gprf.read_port()
-        gprf_rp2 = gprf.read_port()
-        gprf_wp  = gprf.write_port()
-        cpu.submodules += gprf_rp1, gprf_rp2, gprf_wp
+        gprf = cpu.submodules.gprf = gpr.File(width=32, depth=32)
 
         csrf = cpu.submodules.csrf = CSRFile()
         csrf_rp = csrf.read_port()
@@ -289,23 +286,23 @@ class Minerva(Elaboratable):
 
         if self.with_debug:
             with cpu.If(debug.halt & debug.halted):
-                cpu.d.comb += gprf_rp1.addr.eq(debug.gprf_addr)
+                cpu.d.comb += gprf.rp1.addr.eq(debug.gprf_addr)
             with cpu.Elif(~d.stall):
-                cpu.d.comb += gprf_rp1.addr.eq(fetch.f_instruction[15:20])
+                cpu.d.comb += gprf.rp1.addr.eq(fetch.f_instruction[15:20])
             with cpu.Else():
-                cpu.d.comb += gprf_rp1.addr.eq(decoder.rs1)
+                cpu.d.comb += gprf.rp1.addr.eq(decoder.rs1)
 
-            cpu.d.comb += debug.gprf_dat_r.eq(gprf_rp1.data)
+            cpu.d.comb += debug.gprf_dat_r.eq(gprf.rp1.data)
         else:
             with cpu.If(~d.stall):
-                cpu.d.comb += gprf_rp1.addr.eq(fetch.f_instruction[15:20])
+                cpu.d.comb += gprf.rp1.addr.eq(fetch.f_instruction[15:20])
             with cpu.Else():
-                cpu.d.comb += gprf_rp1.addr.eq(decoder.rs1)
+                cpu.d.comb += gprf.rp1.addr.eq(decoder.rs1)
 
         with cpu.If(~d.stall):
-            cpu.d.comb += gprf_rp2.addr.eq(fetch.f_instruction[20:25])
+            cpu.d.comb += gprf.rp2.addr.eq(fetch.f_instruction[20:25])
         with cpu.Else():
-            cpu.d.comb += gprf_rp2.addr.eq(decoder.rs2)
+            cpu.d.comb += gprf.rp2.addr.eq(decoder.rs2)
 
         with cpu.If(~f.stall):
             cpu.d.sync += csrf_rp.addr.eq(fetch.f_instruction[20:32])
@@ -540,21 +537,21 @@ class Minerva(Elaboratable):
         if self.with_debug:
             with cpu.If(debug.halt & debug.halted):
                 cpu.d.comb += [
-                    gprf_wp.addr.eq(debug.gprf_addr),
-                    gprf_wp.en.eq(debug.gprf_we),
-                    gprf_wp.data.eq(debug.gprf_dat_w)
+                    gprf.wp.addr.eq(debug.gprf_addr),
+                    gprf.wp.en.eq(debug.gprf_we),
+                    gprf.wp.data.eq(debug.gprf_dat_w)
                 ]
             with cpu.Else():
                 cpu.d.comb += [
-                    gprf_wp.en.eq((w.sink.rd != 0) & w.sink.rd_we & w.valid & ~w.sink.exception),
-                    gprf_wp.addr.eq(w.sink.rd),
-                    gprf_wp.data.eq(w_result)
+                    gprf.wp.en.eq((w.sink.rd != 0) & w.sink.rd_we & w.valid & ~w.sink.exception),
+                    gprf.wp.addr.eq(w.sink.rd),
+                    gprf.wp.data.eq(w_result)
                 ]
         else:
             cpu.d.comb += [
-                gprf_wp.en.eq((w.sink.rd != 0) & w.sink.rd_we & w.valid),
-                gprf_wp.addr.eq(w.sink.rd),
-                gprf_wp.data.eq(w_result)
+                gprf.wp.en.eq((w.sink.rd != 0) & w.sink.rd_we & w.valid),
+                gprf.wp.addr.eq(w.sink.rd),
+                gprf.wp.data.eq(w_result)
             ]
 
         # D stage operand selection
@@ -575,7 +572,7 @@ class Minerva(Elaboratable):
         with cpu.Elif(w_raw_rs1 & w.sink.valid):
             cpu.d.comb += d_src1.eq(w_result)
         with cpu.Else():
-            cpu.d.comb += d_src1.eq(gprf_rp1.data)
+            cpu.d.comb += d_src1.eq(gprf.rp1.data)
 
         with cpu.If(decoder.csr):
             cpu.d.comb += d_src2.eq(csrf_rp.data)
@@ -590,7 +587,7 @@ class Minerva(Elaboratable):
         with cpu.Elif(w_raw_rs2 & w.sink.valid):
             cpu.d.comb += d_src2.eq(w_result)
         with cpu.Else():
-            cpu.d.comb += d_src2.eq(gprf_rp2.data)
+            cpu.d.comb += d_src2.eq(gprf.rp2.data)
 
         # branch prediction
 
@@ -687,8 +684,8 @@ class Minerva(Elaboratable):
                 rvficon.m_pc_rdata.eq(m.sink.pc),
                 rvficon.m_stall.eq(m.stall),
                 rvficon.m_valid.eq(m.valid),
-                rvficon.w_rd_addr.eq(Mux(gprf_wp.en, gprf_wp.addr, 0)),
-                rvficon.w_rd_wdata.eq(Mux(gprf_wp.en, gprf_wp.data, 0)),
+                rvficon.w_rd_addr.eq(Mux(gprf.wp.en, gprf.wp.addr, 0)),
+                rvficon.w_rd_wdata.eq(Mux(gprf.wp.en, gprf.wp.data, 0)),
                 rvficon.mtvec_r_base.eq(exception.mtvec.r.base),
                 rvficon.mepc_r_value.eq(exception.mepc.r),
                 rvficon.rvfi.connect(self.rvfi)
