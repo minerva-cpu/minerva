@@ -330,7 +330,8 @@ class Minerva(Elaboratable):
 
         if self.with_muldiv:
             cpu.d.comb += [
-                multiplier.x_op.eq(x.sink.funct3),
+                multiplier.d_op.eq(decoder.funct3),
+                multiplier.d_stall.eq(d.stall),
                 multiplier.x_src1.eq(x.sink.src1),
                 multiplier.x_src2.eq(x.sink.src2),
                 multiplier.x_stall.eq(x.stall),
