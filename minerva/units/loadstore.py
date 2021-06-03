@@ -138,10 +138,16 @@ class BareLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
 
 
 class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
-    def __init__(self, *dcache_args):
+    def __init__(self, *, dcache_nways, dcache_nlines, dcache_nwords, dcache_base, dcache_limit):
         super().__init__()
 
-        self.dcache_args = dcache_args
+        self._dcache = L1Cache(
+            nways  = dcache_nways,
+            nlines = dcache_nlines,
+            nwords = dcache_nwords,
+            base   = dcache_base,
+            limit  = dcache_limit
+        )
 
         self.x_fence_i = Signal()
         self.m_load = Signal()
@@ -151,7 +157,7 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
     def elaborate(self, platform):
         m = Module()
 
-        dcache = m.submodules.dcache = L1Cache(*self.dcache_args)
+        m.submodules.dcache = self._dcache
 
         x_dcache_select = Signal()
 
@@ -165,10 +171,10 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
                 const_bits = 30 - range_bits
                 return "{}{}".format("0" * const_bits, "-" * range_bits)
 
-            if dcache.base >= 4:
-                with m.Case(addr_below(dcache.base >> 2)):
+            if self._dcache.base >= 4:
+                with m.Case(addr_below(self._dcache.base >> 2)):
                     m.d.comb += x_dcache_select.eq(0)
-            with m.Case(addr_below(dcache.limit >> 2)):
+            with m.Case(addr_below(self._dcache.limit >> 2)):
                 m.d.comb += x_dcache_select.eq(1)
             with m.Default():
                 m.d.comb += x_dcache_select.eq(0)
@@ -183,19 +189,19 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
             ]
 
         m.d.comb += [
-            dcache.s1_addr.eq(self.x_addr[2:]),
-            dcache.s1_stall.eq(self.x_stall),
-            dcache.s1_valid.eq(self.x_valid),
-            dcache.s2_addr.eq(m_addr[2:]),
-            dcache.s2_re.eq(self.m_load & m_dcache_select),
-            dcache.s2_evict.eq(self.m_store & m_dcache_select),
-            dcache.s2_flush.eq(self.m_flush),
-            dcache.s2_valid.eq(self.m_valid),
+            self._dcache.s1_addr .eq(self.x_addr[2:]),
+            self._dcache.s1_stall.eq(self.x_stall),
+            self._dcache.s1_valid.eq(self.x_valid),
+            self._dcache.s2_addr .eq(m_addr[2:]),
+            self._dcache.s2_re   .eq(self.m_load  & m_dcache_select),
+            self._dcache.s2_evict.eq(self.m_store & m_dcache_select),
+            self._dcache.s2_flush.eq(self.m_flush),
+            self._dcache.s2_valid.eq(self.m_valid),
         ]
 
         wrbuf_w_data = Record([("addr", 30), ("mask", 4), ("data", 32)])
         wrbuf_r_data = Record.like(wrbuf_w_data)
-        wrbuf = m.submodules.wrbuf = SyncFIFO(width=len(wrbuf_w_data), depth=dcache.nwords)
+        wrbuf = m.submodules.wrbuf = SyncFIFO(width=len(wrbuf_w_data), depth=self._dcache.nwords)
         m.d.comb += [
             wrbuf.w_data.eq(wrbuf_w_data),
             wrbuf_w_data.addr.eq(self.x_addr[2:]),
@@ -227,15 +233,15 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
 
         dcache_port = dbus_arbiter.port(priority=1)
         m.d.comb += [
-            dcache_port.cyc.eq(dcache.bus_re),
-            dcache_port.stb.eq(dcache.bus_re),
-            dcache_port.adr.eq(dcache.bus_addr),
+            dcache_port.cyc.eq(self._dcache.bus_re),
+            dcache_port.stb.eq(self._dcache.bus_re),
+            dcache_port.adr.eq(self._dcache.bus_addr),
             dcache_port.sel.eq(0b1111),
-            dcache_port.cti.eq(Mux(dcache.bus_last, Cycle.END, Cycle.INCREMENT)),
-            dcache_port.bte.eq(Const(log2_int(dcache.nwords) - 1)),
-            dcache.bus_valid.eq(dcache_port.ack),
-            dcache.bus_error.eq(dcache_port.err),
-            dcache.bus_rdata.eq(dcache_port.dat_r)
+            dcache_port.cti.eq(Mux(self._dcache.bus_last, Cycle.END, Cycle.INCREMENT)),
+            dcache_port.bte.eq(Const(log2_int(self._dcache.nwords) - 1)),
+            self._dcache.bus_valid.eq(dcache_port.ack),
+            self._dcache.bus_error.eq(dcache_port.err),
+            self._dcache.bus_rdata.eq(dcache_port.dat_r)
         ]
 
         bare_port = dbus_arbiter.port(priority=2)
@@ -277,18 +283,18 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
             m.d.comb += self.x_busy.eq(bare_port.cyc)
 
         with m.If(self.m_flush):
-            m.d.comb += self.m_busy.eq(m_dcache_select & ~dcache.s2_flush_ack)
+            m.d.comb += self.m_busy.eq(m_dcache_select & ~self._dcache.s2_flush_ack)
         with m.Elif(self.m_load_error | self.m_store_error):
             m.d.comb += self.m_busy.eq(0)
         with m.Elif(m_dcache_select):
-            m.d.comb += self.m_busy.eq(self.m_load & dcache.s2_miss)
+            m.d.comb += self.m_busy.eq(self.m_load & self._dcache.s2_miss)
         with m.Else():
             m.d.comb += self.m_busy.eq(bare_port.cyc)
 
         with m.If(self.m_load_error):
             m.d.comb += self.m_load_data.eq(0)
         with m.Elif(m_dcache_select):
-            m.d.comb += self.m_load_data.eq(dcache.s2_rdata)
+            m.d.comb += self.m_load_data.eq(self._dcache.s2_rdata)
         with m.Else():
             m.d.comb += self.m_load_data.eq(bare_rdata)
 
