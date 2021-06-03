@@ -1,6 +1,6 @@
 from nmigen import *
 from nmigen.utils import log2_int
-from nmigen.lib.fifo import SyncFIFO
+from nmigen.lib.fifo import SyncFIFOBuffered
 
 from ..cache import *
 from ..isa import Funct3
@@ -137,8 +137,42 @@ class BareLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
         return m
 
 
+class WriteBuffer(Elaboratable):
+    def __init__(self, *, depth, addr_width, data_width, granularity):
+        self.w = Record([
+            ("en",  1),
+            ("rdy", 1),
+            ("op", [
+                ("addr", addr_width),
+                ("mask", data_width // granularity),
+                ("data", data_width),
+            ])
+        ])
+        self.r = Record.like(self.w)
+
+        self._fifo = SyncFIFOBuffered(width=len(self.w.op), depth=depth)
+
+    def elaborate(self, platform):
+        m = Module()
+
+        m.submodules.fifo = self._fifo
+        m.d.comb += [
+            self.w.rdy.eq(self._fifo.w_rdy),
+            self._fifo.w_en  .eq(self.w.en),
+            self._fifo.w_data.eq(self.w.op),
+
+            self._fifo.r_en.eq(self.r.en),
+            self.r.rdy.eq(self._fifo.r_rdy),
+            self.r.op .eq(self._fifo.r_data),
+        ]
+
+        return m
+
+
 class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
-    def __init__(self, *, dcache_nways, dcache_nlines, dcache_nwords, dcache_base, dcache_limit):
+    def __init__(self, *,
+            dcache_nways, dcache_nlines, dcache_nwords, dcache_base, dcache_limit,
+            wrbuf_depth):
         super().__init__()
 
         self._dcache = L1Cache(
@@ -147,6 +181,12 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
             nwords = dcache_nwords,
             base   = dcache_base,
             limit  = dcache_limit
+        )
+        self._wrbuf  = WriteBuffer(
+            depth       = wrbuf_depth,
+            addr_width  = 30,
+            data_width  = 32,
+            granularity = 8,
         )
 
         self.x_fence_i = Signal()
@@ -199,16 +239,12 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
             self._dcache.s2_valid.eq(self.m_valid),
         ]
 
-        wrbuf_w_data = Record([("addr", 30), ("mask", 4), ("data", 32)])
-        wrbuf_r_data = Record.like(wrbuf_w_data)
-        wrbuf = m.submodules.wrbuf = SyncFIFO(width=len(wrbuf_w_data), depth=self._dcache.nwords)
+        m.submodules.wrbuf = self._wrbuf
         m.d.comb += [
-            wrbuf.w_data.eq(wrbuf_w_data),
-            wrbuf_w_data.addr.eq(self.x_addr[2:]),
-            wrbuf_w_data.mask.eq(self.x_mask),
-            wrbuf_w_data.data.eq(self.x_store_data),
-            wrbuf.w_en.eq(self.x_store & self.x_valid & x_dcache_select & ~self.x_stall),
-            wrbuf_r_data.eq(wrbuf.r_data),
+            self._wrbuf.w.en     .eq(self.x_store & self.x_valid & x_dcache_select & ~self.x_stall),
+            self._wrbuf.w.op.addr.eq(self.x_addr[2:]),
+            self._wrbuf.w.op.mask.eq(self.x_mask),
+            self._wrbuf.w.op.data.eq(self.x_store_data),
         ]
 
         dbus_arbiter = m.submodules.dbus_arbiter = WishboneArbiter()
@@ -216,19 +252,19 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
 
         wrbuf_port = dbus_arbiter.port(priority=0)
         m.d.comb += [
-            wrbuf_port.cyc.eq(wrbuf.r_rdy),
+            wrbuf_port.cyc.eq(self._wrbuf.r.rdy),
             wrbuf_port.we.eq(Const(1)),
         ]
         with m.If(wrbuf_port.stb):
             with m.If(wrbuf_port.ack | wrbuf_port.err):
                 m.d.sync += wrbuf_port.stb.eq(0)
-                m.d.comb += wrbuf.r_en.eq(1)
-        with m.Elif(wrbuf.r_rdy):
+                m.d.comb += self._wrbuf.r.en.eq(1)
+        with m.Elif(self._wrbuf.r.rdy):
             m.d.sync += [
-                wrbuf_port.stb.eq(1),
-                wrbuf_port.adr.eq(wrbuf_r_data.addr),
-                wrbuf_port.sel.eq(wrbuf_r_data.mask),
-                wrbuf_port.dat_w.eq(wrbuf_r_data.data)
+                wrbuf_port.stb  .eq(1),
+                wrbuf_port.adr  .eq(self._wrbuf.r.op.addr),
+                wrbuf_port.sel  .eq(self._wrbuf.r.op.mask),
+                wrbuf_port.dat_w.eq(self._wrbuf.r.op.data),
             ]
 
         dcache_port = dbus_arbiter.port(priority=1)
@@ -276,9 +312,9 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
             ]
 
         with m.If(self.x_fence_i):
-            m.d.comb += self.x_busy.eq(wrbuf.r_rdy)
+            m.d.comb += self.x_busy.eq(self._wrbuf.r.rdy)
         with m.Elif(x_dcache_select):
-            m.d.comb += self.x_busy.eq(self.x_store & ~wrbuf.w_rdy)
+            m.d.comb += self.x_busy.eq(self.x_store & ~self._wrbuf.w.rdy)
         with m.Else():
             m.d.comb += self.x_busy.eq(bare_port.cyc)
 

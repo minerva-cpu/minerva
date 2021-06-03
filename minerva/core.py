@@ -147,6 +147,7 @@ class Minerva(Elaboratable):
             dcache_nwords = 4,
             dcache_base   = 0,
             dcache_limit  = 2**31,
+            wrbuf_depth   = 8,
             with_muldiv   = False,
             with_debug    = False,
             with_trigger  = False,
@@ -219,6 +220,7 @@ class Minerva(Elaboratable):
                 dcache_nwords = dcache_nwords,
                 dcache_base   = dcache_base,
                 dcache_limit  = dcache_limit,
+                wrbuf_depth   = wrbuf_depth,
             )
         else:
             self._loadstore = BareLoadStoreUnit()

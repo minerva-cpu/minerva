@@ -64,6 +64,9 @@ def main():
     dcache_group.add_argument("--dcache-limit",
             type=lambda s: int(s, 16), default="0x80000000",
             help="limit address")
+    dcache_group.add_argument("--wrbuf-depth",
+            type=int, default=8,
+            help="write buffer depth")
 
     trigger_group = parser.add_argument_group("trigger options")
     trigger_group.add_argument("--nb-triggers",
@@ -82,6 +85,7 @@ def main():
             args.icache_base, args.icache_limit,
             args.with_dcache, args.dcache_nways, args.dcache_nlines, args.dcache_nwords,
             args.dcache_base, args.dcache_limit,
+            args.wrbuf_depth,
             args.with_muldiv,
             args.with_debug,
             args.with_trigger, args.nb_triggers,
