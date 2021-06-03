@@ -541,41 +541,60 @@ class Minerva(Elaboratable):
 
         # RAW hazard management
 
-        x_raw_rs1 = Signal()
-        m_raw_rs1 = Signal()
-        w_raw_rs1 = Signal()
-        x_raw_rs2 = Signal()
-        m_raw_rs2 = Signal()
-        w_raw_rs2 = Signal()
+        d_raw_rs1_x = Signal()
+        d_raw_rs1_m = Signal()
+        d_raw_rs1_w = Signal()
+        d_raw_rs2_x = Signal()
+        d_raw_rs2_m = Signal()
+        d_raw_rs2_w = Signal()
 
-        x_raw_csr = Signal()
-        m_raw_csr = Signal()
+        with cpu.If((self._x.sink.rd != 0) & self._x.sink.rd_we):
+            cpu.d.comb += [
+                d_raw_rs1_x.eq(self._x.sink.rd == self._decoder.rs1),
+                d_raw_rs2_x.eq(self._x.sink.rd == self._decoder.rs2),
+            ]
 
-        x_lock = Signal()
-        m_lock = Signal()
+        with cpu.If((self._m.sink.rd != 0) & self._m.sink.rd_we):
+            cpu.d.comb += [
+                d_raw_rs1_m.eq(self._m.sink.rd == self._decoder.rs1),
+                d_raw_rs2_m.eq(self._m.sink.rd == self._decoder.rs2),
+            ]
 
-        cpu.d.comb += [
-            x_raw_rs1.eq(self._x.sink.rd.any() & (self._x.sink.rd == self._decoder.rs1) & self._x.sink.rd_we),
-            m_raw_rs1.eq(self._m.sink.rd.any() & (self._m.sink.rd == self._decoder.rs1) & self._m.sink.rd_we),
-            w_raw_rs1.eq(self._w.sink.rd.any() & (self._w.sink.rd == self._decoder.rs1) & self._w.sink.rd_we),
+        with cpu.If((self._w.sink.rd != 0) & self._w.sink.rd_we):
+            cpu.d.comb += [
+                d_raw_rs1_w.eq(self._w.sink.rd == self._decoder.rs1),
+                d_raw_rs2_w.eq(self._w.sink.rd == self._decoder.rs2),
+            ]
 
-            x_raw_rs2.eq(self._x.sink.rd.any() & (self._x.sink.rd == self._decoder.rs2) & self._x.sink.rd_we),
-            m_raw_rs2.eq(self._m.sink.rd.any() & (self._m.sink.rd == self._decoder.rs2) & self._m.sink.rd_we),
-            w_raw_rs2.eq(self._w.sink.rd.any() & (self._w.sink.rd == self._decoder.rs2) & self._w.sink.rd_we),
+        d_raw_csr_x = Signal()
+        d_raw_csr_m = Signal()
 
-            x_raw_csr.eq((self._x.sink.csr_adr == self._decoder.immediate) & self._x.sink.csr_we),
-            m_raw_csr.eq((self._m.sink.csr_adr == self._decoder.immediate) & self._m.sink.csr_we),
+        with cpu.If(self._x.sink.csr_we):
+            cpu.d.comb += d_raw_csr_x.eq(self._x.sink.csr_adr == self._decoder.immediate)
 
-            x_lock.eq(~self._x.sink.bypass_x & (self._decoder.rs1_re & x_raw_rs1 | self._decoder.rs2_re & x_raw_rs2)
-                     | self._decoder.csr & x_raw_csr),
-            m_lock.eq(~self._m.sink.bypass_m & (self._decoder.rs1_re & m_raw_rs1 | self._decoder.rs2_re & m_raw_rs2)
-                     | self._decoder.csr & m_raw_csr),
-        ]
+        with cpu.If(self._m.sink.csr_we):
+            cpu.d.comb += d_raw_csr_m.eq(self._m.sink.csr_adr == self._decoder.immediate)
+
+        d_lock_x = Signal()
+        d_lock_m = Signal()
+        d_lock   = Signal()
+
+        with cpu.If(~self._x.sink.bypass_x):
+            cpu.d.comb += d_lock_x.eq(self._decoder.rs1_re & d_raw_rs1_x
+                                    | self._decoder.rs2_re & d_raw_rs2_x
+                                    | self._decoder.csr    & d_raw_csr_x)
+
+        with cpu.If(~self._m.sink.bypass_m):
+            cpu.d.comb += d_lock_m.eq(self._decoder.rs1_re & d_raw_rs1_m
+                                    | self._decoder.rs2_re & d_raw_rs2_m
+                                    | self._decoder.csr    & d_raw_csr_m)
+
+        cpu.d.comb += d_lock.eq(d_lock_x & self._x.valid | d_lock_m & self._m.valid)
 
         if self.with_debug:
-            self._d.stall_on((x_lock & self._x.valid | m_lock & self._m.valid) & self._d.valid & ~self._debug.dcsr_step)
+            self._d.stall_on(d_lock & self._d.valid & ~self._debug.dcsr_step)
         else:
-            self._d.stall_on((x_lock & self._x.valid | m_lock & self._m.valid) & self._d.valid)
+            self._d.stall_on(d_lock & self._d.valid)
 
         # Result selection
 
@@ -658,11 +677,11 @@ class Minerva(Elaboratable):
             cpu.d.comb += d_src1.eq(self._d.sink.pc)
         with cpu.Elif(self._decoder.rs1_re & (self._decoder.rs1 == 0)):
             cpu.d.comb += d_src1.eq(0)
-        with cpu.Elif(x_raw_rs1 & self._x.sink.valid):
+        with cpu.Elif(d_raw_rs1_x & self._x.sink.valid):
             cpu.d.comb += d_src1.eq(x_result)
-        with cpu.Elif(m_raw_rs1 & self._m.sink.valid):
+        with cpu.Elif(d_raw_rs1_m & self._m.sink.valid):
             cpu.d.comb += d_src1.eq(m_result)
-        with cpu.Elif(w_raw_rs1 & self._w.sink.valid):
+        with cpu.Elif(d_raw_rs1_w & self._w.sink.valid):
             cpu.d.comb += d_src1.eq(w_result)
         with cpu.Else():
             cpu.d.comb += d_src1.eq(self._gprf.rp1.data)
@@ -673,11 +692,11 @@ class Minerva(Elaboratable):
             cpu.d.comb += d_src2.eq(self._decoder.immediate)
         with cpu.Elif(self._decoder.rs2 == 0):
             cpu.d.comb += d_src2.eq(0)
-        with cpu.Elif(x_raw_rs2 & self._x.sink.valid):
+        with cpu.Elif(d_raw_rs2_x & self._x.sink.valid):
             cpu.d.comb += d_src2.eq(x_result)
-        with cpu.Elif(m_raw_rs2 & self._m.sink.valid):
+        with cpu.Elif(d_raw_rs2_m & self._m.sink.valid):
             cpu.d.comb += d_src2.eq(m_result)
-        with cpu.Elif(w_raw_rs2 & self._w.sink.valid):
+        with cpu.Elif(d_raw_rs2_w & self._w.sink.valid):
             cpu.d.comb += d_src2.eq(w_result)
         with cpu.Else():
             cpu.d.comb += d_src2.eq(self._gprf.rp2.data)
