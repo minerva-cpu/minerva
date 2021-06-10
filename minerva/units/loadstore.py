@@ -201,23 +201,28 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
 
         x_dcache_select = Signal()
 
-        # Test whether the target address is inside the L1 cache region. We use bit masks in order
-        # to avoid carry chains from arithmetic comparisons. This restricts the region boundaries
-        # to powers of 2.
-        with m.Switch(self.x_addr[2:]):
-            def addr_below(limit):
-                assert limit in range(1, 2**30 + 1)
-                range_bits = log2_int(limit)
-                const_bits = 30 - range_bits
-                return "{}{}".format("0" * const_bits, "-" * range_bits)
+        # Test whether the target address is inside the L1 cache region. We use a bit mask in order
+        # to avoid carry chains from arithmetic comparisons. To this end, the base and limit
+        # addresses of the cached region must satisfy the following constraints:
+        # 1) the region size (i.e. ``limit - base``) must be a power of 2
+        # 2) ``base`` must be a multiple of the region size
 
-            if self._dcache.base >= 4:
-                with m.Case(addr_below(self._dcache.base >> 2)):
-                    m.d.comb += x_dcache_select.eq(0)
-            with m.Case(addr_below(self._dcache.limit >> 2)):
-                m.d.comb += x_dcache_select.eq(1)
-            with m.Default():
-                m.d.comb += x_dcache_select.eq(0)
+        def addr_between(base, limit):
+            assert base  in range(1, 2**30 + 1)
+            assert limit in range(1, 2**30 + 1)
+            assert limit >= base
+            assert base % (limit - base) == 0
+            addr_width = log2_int(limit - base, need_pow2=True)
+            const_bits = 30 - addr_width
+            if const_bits > 0:
+                const_pat = "{:0{}b}".format(base >> addr_width, const_bits)
+            else:
+                const_pat = ""
+            return "{}{}".format(const_pat, "-" * addr_width)
+
+        dcache_pattern = addr_between(self._dcache.base >> 2, self._dcache.limit >> 2)
+        with m.If(self.x_addr[2:].matches(dcache_pattern)):
+            m.d.comb += x_dcache_select.eq(1)
 
         m_dcache_select = Signal()
         m_addr = Signal.like(self.x_addr)

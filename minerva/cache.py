@@ -1,7 +1,7 @@
 from nmigen import *
 from nmigen.asserts import *
 from nmigen.lib.coding import Encoder
-from nmigen.utils import log2_int
+from nmigen.utils import log2_int, bits_for
 
 
 __all__ = ["L1Cache"]
@@ -18,17 +18,23 @@ class L1Cache(Elaboratable):
         if nways not in {1, 2}:
             raise ValueError("nways must be 1 or 2, not {!r}".format(nways))
 
-        if not isinstance(base, int):
-            raise TypeError("base must be an integer, not {!r}".format(base))
-        if base not in range(0, 2**32) or base & base - 1:
-            raise ValueError("base must be 0 or a power of 2 (< 2**32), not {:#x}".format(base))
-        if not isinstance(limit, int):
-            raise TypeError("limit must be an integer, not {!r}".format(limit))
-        if limit not in range(1, 2**32 + 1) or limit & limit - 1:
-            raise ValueError("limit must be a power of 2 (<= 2**32), not {:#x}".format(limit))
+        if not isinstance(base, int) or base not in range(0, 2**32):
+            raise ValueError("base must be an integer between {:#x} and {:#x} inclusive, not {!r}"
+                             .format(0, 2**32-1, base))
+        if limit not in range(0, 2**32):
+            raise ValueError("limit must be an integer between {:#x} and {:#x} inclusive, not {!r}"
+                             .format(0, 2**32-1, limit))
+
         if base >= limit:
             raise ValueError("limit {:#x} must be greater than base {:#x}"
                              .format(limit, base))
+        if (limit - base) & (limit - base) - 1:
+            raise ValueError("limit - base must be a power of 2, not {:#x}"
+                             .format(limit - base))
+        if base % (limit - base):
+            raise ValueError("base must be a multiple of limit - base, but {:#x} is not a multiple "
+                             "of {:#x}"
+                             .format(base, limit - base))
 
         self.nways = nways
         self.nlines = nlines
@@ -38,7 +44,7 @@ class L1Cache(Elaboratable):
 
         offsetbits = log2_int(nwords)
         linebits = log2_int(nlines)
-        tagbits = log2_int(limit) - linebits - offsetbits - 2
+        tagbits = bits_for(limit) - linebits - offsetbits - 2
 
         self.s1_addr = Record([("offset", offsetbits), ("line", linebits), ("tag", tagbits)])
         self.s1_stall = Signal()
