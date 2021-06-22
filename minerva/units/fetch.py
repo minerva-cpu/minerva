@@ -151,8 +151,8 @@ class CachedFetchUnit(FetchUnitInterface, Elaboratable):
         # 2) ``base`` must be a multiple of the region size
 
         def addr_between(base, limit):
-            assert base  in range(1, 2**30 + 1)
-            assert limit in range(1, 2**30 + 1)
+            assert base  in range(0, 2**30 + 1)
+            assert limit in range(0, 2**30 + 1)
             assert limit >= base
             assert base % (limit - base) == 0
             addr_width = log2_int(limit - base, need_pow2=True)
