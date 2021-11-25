@@ -1,4 +1,6 @@
 from amaranth import *
+from amaranth.lib import wiring
+from amaranth.lib.wiring import In, Out
 
 from ..isa import Funct3
 
@@ -6,13 +8,11 @@ from ..isa import Funct3
 __all__ = ["LogicUnit"]
 
 
-class LogicUnit(Elaboratable):
-    def __init__(self):
-        self.op = Signal(3)
-        self.src1 = Signal(32)
-        self.src2 = Signal(32)
-
-        self.result = Signal(32)
+class LogicUnit(wiring.Component):
+    op:     In(3)
+    src1:   In(32)
+    src2:   In(32)
+    result: Out(32)
 
     def elaborate(self, platform):
         m = Module()

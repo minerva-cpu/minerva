@@ -1,26 +1,27 @@
 from amaranth import *
+from amaranth.lib import wiring
+from amaranth.lib.wiring import In, Out
 
 
 __all__ = ["Adder"]
 
 
-class Adder(Elaboratable):
-    def __init__(self):
-        self.d_sub      = Signal()
-        self.d_stall    = Signal()
-        self.x_src1     = Signal(32)
-        self.x_src2     = Signal(32)
+class Adder(wiring.Component):
+    d_sub:      In(1)
+    d_ready:    In(1)
 
-        self.x_result   = Signal(32)
-        self.x_carry    = Signal()
-        self.x_overflow = Signal()
+    x_src1:     In(32)
+    x_src2:     In(32)
+    x_result:   Out(32)
+    x_carry:    Out(1)
+    x_overflow: Out(1)
 
     def elaborate(self, platform):
         m = Module()
 
         x_sub = Signal()
 
-        with m.If(~self.d_stall):
+        with m.If(self.d_ready):
             m.d.sync += x_sub.eq(self.d_sub)
 
         x_add_result   = Signal(32)

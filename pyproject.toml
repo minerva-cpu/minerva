@@ -11,12 +11,10 @@ license = {file = "LICENSE.txt"}
 
 requires-python = "~=3.8"
 dependencies = [
-    "amaranth[builtin-yosys]>=0.3,<0.5",
+    "amaranth[builtin-yosys]<0.6,>=0.5",
+    "amaranth_soc @ git+https://github.com/amaranth-lang/amaranth-soc",
     "yowasp-yosys",
 ]
-
-[project.optional-dependencies]
-debug = ["jtagtap"]
 
 [project.urls]
 "Source Code" = "https://github.com/minerva-cpu/minerva"

@@ -1,33 +1,40 @@
 from amaranth import *
-from amaranth.utils import log2_int
+from amaranth.lib import wiring
+from amaranth.lib.wiring import In, Out, flipped, connect
+from amaranth.utils import ceil_log2, exact_log2
+
+from amaranth_soc import wishbone
+from amaranth_soc.wishbone.bus import CycleType
 
 from ..cache import *
-from ..wishbone import *
+from ..arbiter import WishboneArbiter
 
 
-__all__ = ["PCSelector", "FetchUnitInterface", "BareFetchUnit", "CachedFetchUnit"]
+__all__ = ["PCSelector", "BareFetchUnit", "CachedFetchUnit"]
 
 
-class PCSelector(Elaboratable):
-    def __init__(self):
-        self.f_pc = Signal(32)
-        self.d_pc = Signal(32)
-        self.d_branch_predict_taken = Signal()
-        self.d_branch_target = Signal(32)
-        self.d_valid = Signal()
-        self.x_pc = Signal(32)
-        self.x_fence_i = Signal()
-        self.x_valid = Signal()
-        self.m_branch_predict_taken = Signal()
-        self.m_branch_taken = Signal()
-        self.m_branch_target = Signal(32)
-        self.m_exception = Signal()
-        self.m_mret = Signal()
-        self.m_valid = Signal()
-        self.mtvec_r_base = Signal(30)
-        self.mepc_r_base = Signal(30)
+class PCSelector(wiring.Component):
+    a_pc:                   Out(32)
 
-        self.a_pc = Signal(32)
+    f_pc:                   In(32)
+
+    d_pc:                   In(32)
+    d_branch_predict_taken: In(1)
+    d_branch_target:        In(32)
+    d_valid:                In(1)
+
+    x_pc:                   In(32)
+    x_fence_i:              In(1)
+    x_mtvec_base:           In(30)
+    x_mepc_base:            In(30)
+    x_valid:                In(1)
+
+    m_branch_predict_taken: In(1)
+    m_branch_taken:         In(1)
+    m_branch_target:        In(32)
+    m_exception:            In(1)
+    m_mret:                 In(1)
+    m_valid:                In(1)
 
     def elaborate(self, platform):
         m = Module()
@@ -37,9 +44,12 @@ class PCSelector(Elaboratable):
         a_pc4   = Signal(30)
 
         with m.If(self.m_exception):
-            m.d.comb += m_pc4_a.eq(self.mtvec_r_base)
+            # The pipeline will stall new instructions at D stage while a CSR write instruction
+            # is in-flight. Therefore, we assume that no write to mtvec is ongoing here.
+            m.d.comb += m_pc4_a.eq(self.x_mtvec_base)
         with m.Elif(self.m_mret):
-            m.d.comb += m_pc4_a.eq(self.mepc_r_base)
+            # Same for mepc.
+            m.d.comb += m_pc4_a.eq(self.x_mepc_base)
         with m.Elif(self.m_branch_predict_taken & ~self.m_branch_taken):
             m.d.comb += m_pc4_a.eq(self.x_pc[2:])
         with m.Elif(~self.m_branch_predict_taken & self.m_branch_taken):
@@ -61,24 +71,22 @@ class PCSelector(Elaboratable):
         return m
 
 
-class FetchUnitInterface:
-    def __init__(self):
-        self.ibus = Record(wishbone_layout)
+class BareFetchUnit(wiring.Component):
+    ibus:          Out(wishbone.Signature(addr_width=30, data_width=32, granularity=8,
+                                          features=("err", "cti", "bte")))
 
-        self.a_pc = Signal(32)
-        self.a_stall = Signal()
-        self.a_valid = Signal()
-        self.f_stall = Signal()
-        self.f_valid = Signal()
+    a_pc:          In(32)
+    a_busy:        Out(1)
+    a_ready:       In(1)
+    a_valid:       In(1)
 
-        self.a_busy = Signal()
-        self.f_busy = Signal()
-        self.f_instruction = Signal(32)
-        self.f_fetch_error = Signal()
-        self.f_badaddr = Signal(30)
+    f_busy:        Out(1)
+    f_instruction: Out(32)
+    f_fetch_error: Out(1)
+    f_badaddr:     Out(30)
+    f_ready:       In(1)
+    f_valid:       In(1)
 
-
-class BareFetchUnit(FetchUnitInterface, Elaboratable):
     def elaborate(self, platform):
         m = Module()
 
@@ -90,7 +98,7 @@ class BareFetchUnit(FetchUnitInterface, Elaboratable):
                     self.ibus.stb.eq(0),
                     ibus_rdata.eq(self.ibus.dat_r)
                 ]
-        with m.Elif(self.a_valid & ~self.a_stall):
+        with m.Elif(self.a_valid & self.a_ready):
             m.d.sync += [
                 self.ibus.adr.eq(self.a_pc[2:]),
                 self.ibus.cyc.eq(1),
@@ -103,7 +111,7 @@ class BareFetchUnit(FetchUnitInterface, Elaboratable):
                 self.f_fetch_error.eq(1),
                 self.f_badaddr.eq(self.ibus.adr)
             ]
-        with m.Elif(~self.f_stall):
+        with m.Elif(self.f_ready):
             m.d.sync += self.f_fetch_error.eq(0)
 
         m.d.comb += self.a_busy.eq(self.ibus.cyc)
@@ -122,10 +130,25 @@ class BareFetchUnit(FetchUnitInterface, Elaboratable):
         return m
 
 
-class CachedFetchUnit(FetchUnitInterface, Elaboratable):
-    def __init__(self, *, icache_nways, icache_nlines, icache_nwords, icache_base, icache_limit):
-        super().__init__()
+class CachedFetchUnit(wiring.Component):
+    ibus:          Out(wishbone.Signature(addr_width=30, data_width=32, granularity=8,
+                                          features=("err", "cti", "bte")))
 
+    a_pc:          In(32)
+    a_flush:       In(1)
+    a_busy:        Out(1)
+    a_ready:       In(1)
+    a_valid:       In(1)
+
+    f_pc:          In(32)
+    f_busy:        Out(1)
+    f_instruction: Out(32)
+    f_fetch_error: Out(1)
+    f_badaddr:     Out(30)
+    f_ready:       In(1)
+    f_valid:       In(1)
+
+    def __init__(self, *, icache_nways, icache_nlines, icache_nwords, icache_base, icache_limit):
         self._icache = L1Cache(
             nways  = icache_nways,
             nlines = icache_nlines,
@@ -133,9 +156,7 @@ class CachedFetchUnit(FetchUnitInterface, Elaboratable):
             base   = icache_base,
             limit  = icache_limit
         )
-
-        self.f_pc = Signal(32)
-        self.a_flush = Signal()
+        super().__init__()
 
     def elaborate(self, platform):
         m = Module()
@@ -155,7 +176,7 @@ class CachedFetchUnit(FetchUnitInterface, Elaboratable):
             assert limit in range(0, 2**30 + 1)
             assert limit >= base
             assert base % (limit - base) == 0
-            addr_width = log2_int(limit - base, need_pow2=True)
+            addr_width = exact_log2(limit - base)
             const_bits = 30 - addr_width
             if const_bits > 0:
                 const_pat = "{:0{}b}".format(base >> addr_width, const_bits)
@@ -170,37 +191,35 @@ class CachedFetchUnit(FetchUnitInterface, Elaboratable):
         f_icache_select = Signal()
         f_flush = Signal()
 
-        with m.If(~self.a_stall):
+        with m.If(self.a_ready):
             m.d.sync += [
                 f_icache_select.eq(a_icache_select),
                 f_flush.eq(self.a_flush),
             ]
 
         m.d.comb += [
-            self._icache.s1_addr .eq(self.a_pc[2:]),
-            self._icache.s1_stall.eq(self.a_stall),
-            self._icache.s1_valid.eq(self.a_valid),
-            self._icache.s2_addr .eq(self.f_pc[2:]),
-            self._icache.s2_re   .eq(f_icache_select),
-            self._icache.s2_evict.eq(Const(0)),
-            self._icache.s2_flush.eq(f_flush),
-            self._icache.s2_valid.eq(self.f_valid),
+            self._icache.s1_addr    .eq(self.a_pc[2:]),
+            self._icache.s1_ready   .eq(self.a_ready),
+            self._icache.s2_addr    .eq(self.f_pc[2:]),
+            self._icache.s2_op.read .eq(f_icache_select),
+            self._icache.s2_op.evict.eq(Const(0)),
+            self._icache.s2_op.flush.eq(f_flush),
+            self._icache.s2_valid   .eq(self.f_valid),
         ]
 
         ibus_arbiter = m.submodules.ibus_arbiter = WishboneArbiter()
-        m.d.comb += ibus_arbiter.bus.connect(self.ibus)
+        connect(m, ibus_arbiter.bus, flipped(self.ibus))
 
         icache_port = ibus_arbiter.port(priority=0)
         m.d.comb += [
-            icache_port.cyc.eq(self._icache.bus_re),
-            icache_port.stb.eq(self._icache.bus_re),
+            icache_port.cyc.eq(self._icache.bus_req),
+            icache_port.stb.eq(self._icache.bus_req),
             icache_port.adr.eq(self._icache.bus_addr),
             icache_port.sel.eq(0b1111),
-            icache_port.cti.eq(Mux(self._icache.bus_last, Cycle.END, Cycle.INCREMENT)),
-            icache_port.bte.eq(Const(log2_int(self._icache.nwords) - 1)),
-            self._icache.bus_valid.eq(icache_port.ack),
-            self._icache.bus_error.eq(icache_port.err),
-            self._icache.bus_rdata.eq(icache_port.dat_r)
+            icache_port.cti.eq(Mux(self._icache.bus_last, CycleType.END_OF_BURST, CycleType.INCR_BURST)),
+            icache_port.bte.eq(Const(ceil_log2(self._icache.nwords) - 1)),
+            self._icache.bus_ack .eq(icache_port.ack | icache_port.err),
+            self._icache.bus_data.eq(icache_port.dat_r)
         ]
 
         bare_port = ibus_arbiter.port(priority=1)
@@ -212,7 +231,7 @@ class CachedFetchUnit(FetchUnitInterface, Elaboratable):
                     bare_port.stb.eq(0),
                     bare_rdata.eq(bare_port.dat_r)
                 ]
-        with m.Elif(~a_icache_select & self.a_valid & ~self.a_stall):
+        with m.Elif(~a_icache_select & self.a_valid & self.a_ready):
             m.d.sync += [
                 bare_port.cyc.eq(1),
                 bare_port.stb.eq(1),
@@ -227,22 +246,18 @@ class CachedFetchUnit(FetchUnitInterface, Elaboratable):
                 self.f_fetch_error.eq(1),
                 self.f_badaddr.eq(self.ibus.adr)
             ]
-        with m.Elif(~self.f_stall):
+        with m.Elif(self.f_ready):
             m.d.sync += self.f_fetch_error.eq(0)
 
-        with m.If(f_flush):
-            m.d.comb += self.f_busy.eq(f_icache_select & ~self._icache.s2_flush_ack)
-        with m.Elif(self.f_fetch_error):
-            m.d.comb += self.f_busy.eq(0)
-        with m.Elif(f_icache_select):
-            m.d.comb += self.f_busy.eq(self._icache.s2_miss)
+        with m.If(f_icache_select):
+            m.d.comb += self.f_busy.eq(self._icache.s2_busy)
         with m.Else():
             m.d.comb += self.f_busy.eq(bare_port.cyc)
 
         with m.If(self.f_fetch_error):
             m.d.comb += self.f_instruction.eq(0x00000013) # nop (addi x0, x0, 0)
         with m.Elif(f_icache_select):
-            m.d.comb += self.f_instruction.eq(self._icache.s2_rdata)
+            m.d.comb += self.f_instruction.eq(self._icache.s2_data)
         with m.Else():
             m.d.comb += self.f_instruction.eq(bare_rdata)
 

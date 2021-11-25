@@ -2,7 +2,7 @@
 
 ## A 32-bit RISC-V soft processor
 
-Minerva is a CPU core that currently implements the [RISC-V][1] RV32IM instruction set. Its microarchitecture is described in plain Python code using [Amaranth HDL][2].
+Minerva is a CPU core that implements the [RISC-V][1] `RV32IMZicsr` instruction set. Its microarchitecture is described in plain Python code using [Amaranth HDL][2].
 
 ### Quick start
 
@@ -54,27 +54,11 @@ The following parameters can be used to configure the Minerva core.
 | `dcache_nwords`   | `4`            | Number of words in a line of the data cache        |
 | `dcache_base`     | `0x00000000`   | Base of the data cache address space               |
 | `dcache_limit`    | `0x80000000`   | Limit of the data cache address space              |
+| `wrbuf_depth`     | `8`            | Depth of the write buffer FIFO                     |
 | `with_muldiv`     | `False`        | Enable RV32M support                               |
-| `with_debug`      | `False`        | Enable the Debug Module                            |
-| `with_trigger`    | `False`        | Enable the Trigger Module                          |
-| `nb_triggers`     | `8`            | Number of triggers                                 |
 | `with_rvfi`       | `False`        | Enable the riscv-formal interface                  |
 
-### Testing
-
 A riscv-formal testbench for Minerva is available [here](https://github.com/minerva-cpu/riscv-formal/tree/minerva/cores/minerva).
-
-### Possible improvements
-
-In no particular order:
-
-* RV64I
-* Floating Point Unit
-* Stateful branch prediction
-* MMU
-* ...
-
-If you are interested in sponsoring new features or improvements, get in touch at contact [at] lambdaconcept.com .
 
 ### License
 
@@ -82,5 +66,5 @@ Minerva is released under the permissive two-clause BSD license.
 See LICENSE file for full copyright and license information.
 
 [1]: https://riscv.org/specifications/
-[2]: https://github.com/amaranth-lang/amaranth/
+[2]: https://amaranth-lang.org/
 [3]: https://github.com/m-labs/lm32/

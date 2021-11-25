@@ -2,84 +2,95 @@ from functools import reduce
 from operator import or_
 
 from amaranth import *
-from amaranth.hdl.rec import *
+from amaranth.lib import wiring
+from amaranth.lib.wiring import In, Out
 
-from ..isa import *
-from ..wishbone import *
+from .. import isa
 
 
-__all__ = ["rvfi_layout", "RVFIController"]
+__all__ = ["RVFISignature", "RVFIController"]
+
 
 # RISC-V Formal Interface
-# https://github.com/SymbioticEDA/riscv-formal/blob/master/docs/rvfi.md
 
-rvfi_layout = [
-    ("valid",      1, DIR_FANOUT),
-    ("order",     64, DIR_FANOUT),
-    ("insn",      32, DIR_FANOUT),
-    ("trap",       1, DIR_FANOUT),
-    ("halt",       1, DIR_FANOUT),
-    ("intr",       1, DIR_FANOUT),
-    ("mode",       2, DIR_FANOUT),
-    ("ixl",        2, DIR_FANOUT),
-
-    ("rs1_addr",   5, DIR_FANOUT),
-    ("rs2_addr",   5, DIR_FANOUT),
-    ("rs1_rdata", 32, DIR_FANOUT),
-    ("rs2_rdata", 32, DIR_FANOUT),
-    ("rd_addr",    5, DIR_FANOUT),
-    ("rd_wdata",  32, DIR_FANOUT),
-
-    ("pc_rdata",  32, DIR_FANOUT),
-    ("pc_wdata",  32, DIR_FANOUT),
-
-    ("mem_addr",  32, DIR_FANOUT),
-    ("mem_rmask",  4, DIR_FANOUT),
-    ("mem_wmask",  4, DIR_FANOUT),
-    ("mem_rdata", 32, DIR_FANOUT),
-    ("mem_wdata", 32, DIR_FANOUT)
-]
-
-
-class RVFIController(Elaboratable):
+class RVFISignature(wiring.Signature):
     def __init__(self):
-        self.rvfi               = Record(rvfi_layout)
+        super().__init__({
+            "valid":     Out(1),
+            "order":     Out(64),
+            "insn":      Out(32),
+            "trap":      Out(1),
+            "halt":      Out(1),
+            "intr":      Out(1),
+            "mode":      Out(2),
+            "ixl":       Out(2),
 
-        self.d_insn             = Signal.like(self.rvfi.insn)
-        self.d_rs1_addr         = Signal.like(self.rvfi.rs1_addr)
-        self.d_rs2_addr         = Signal.like(self.rvfi.rs2_addr)
-        self.d_rs1_rdata        = Signal.like(self.rvfi.rs1_rdata)
-        self.d_rs2_rdata        = Signal.like(self.rvfi.rs2_rdata)
-        self.d_stall            = Signal()
-        self.x_mem_addr         = Signal.like(self.rvfi.mem_addr)
-        self.x_mem_wmask        = Signal.like(self.rvfi.mem_wmask)
-        self.x_mem_rmask        = Signal.like(self.rvfi.mem_rmask)
-        self.x_mem_wdata        = Signal.like(self.rvfi.mem_wdata)
-        self.x_stall            = Signal()
-        self.m_mem_rdata        = Signal.like(self.rvfi.mem_rdata)
-        self.m_fetch_misaligned = Signal()
-        self.m_illegal_insn     = Signal()
-        self.m_load_misaligned  = Signal()
-        self.m_store_misaligned = Signal()
-        self.m_exception        = Signal()
-        self.m_mret             = Signal()
-        self.m_branch_taken     = Signal()
-        self.m_branch_target    = Signal(32)
-        self.m_pc_rdata         = Signal.like(self.rvfi.pc_rdata)
-        self.m_stall            = Signal()
-        self.m_valid            = Signal()
-        self.w_rd_addr          = Signal.like(self.rvfi.rd_addr)
-        self.w_rd_wdata         = Signal.like(self.rvfi.rd_wdata)
+            "rs1_addr":  Out(5),
+            "rs2_addr":  Out(5),
+            "rs1_rdata": Out(32),
+            "rs2_rdata": Out(32),
+            "rd_addr":   Out(5),
+            "rd_wdata":  Out(32),
 
-        self.mtvec_r_base       = Signal(30)
-        self.mepc_r_value       = Signal(32)
+            "pc_rdata":  Out(32),
+            "pc_wdata":  Out(32),
+
+            "mem_addr":  Out(32),
+            "mem_rmask": Out(4),
+            "mem_wmask": Out(4),
+            "mem_rdata": Out(32),
+            "mem_wdata": Out(32),
+        })
+
+
+class RVFIController(wiring.Component):
+    rvfi:               Out(RVFISignature())
+
+    d_insn:             In(32)
+    d_rs1_addr:         In(5)
+    d_rs2_addr:         In(5)
+    d_ready:            In(1)
+
+    x_rs1_rdata:        In(32)
+    x_rs2_rdata:        In(32)
+    x_mem_addr:         In(32)
+    x_mem_wmask:        In(4)
+    x_mem_rmask:        In(4)
+    x_mem_wdata:        In(32)
+    x_mtvec_base:       In(30)
+    x_mepc_base:        In(30)
+    x_ready:            In(1)
+
+    m_mem_rdata:        In(32)
+    m_fetch_misaligned: In(1)
+    m_illegal_insn:     In(1)
+    m_load_misaligned:  In(1)
+    m_store_misaligned: In(1)
+    m_exception:        In(1)
+    m_mret:             In(1)
+    m_branch_taken:     In(1)
+    m_branch_target:    In(32)
+    m_pc_rdata:         In(32)
+    m_ready:            In(1)
+    m_valid:            In(1)
+    w_rd_addr:          In(5)
+    w_rd_wdata:         In(32)
 
     def elaborate(self, platform):
         m = Module()
 
+        m_mtvec_base = Signal(30)
+        m_mepc_base  = Signal(30)
+
+        with m.If(self.x_ready):
+            m.d.sync += [
+                m_mtvec_base.eq(self.x_mtvec_base),
+                m_mepc_base .eq(self.x_mepc_base),
+            ]
+
         # Instruction Metadata
 
-        with m.If(~self.m_stall):
+        with m.If(self.m_ready):
             m.d.sync += self.rvfi.valid.eq(self.m_valid)
         with m.Elif(self.rvfi.valid):
             m.d.sync += self.rvfi.valid.eq(0)
@@ -90,14 +101,14 @@ class RVFIController(Elaboratable):
         x_insn = Signal.like(self.rvfi.insn)
         m_insn = Signal.like(self.rvfi.insn)
 
-        with m.If(~self.d_stall):
+        with m.If(self.d_ready):
             m.d.sync += x_insn.eq(self.d_insn)
-        with m.If(~self.x_stall):
+        with m.If(self.x_ready):
             m.d.sync += m_insn.eq(x_insn)
-        with m.If(~self.m_stall):
+        with m.If(self.m_ready):
             m.d.sync += self.rvfi.insn.eq(m_insn)
 
-        with m.If(~self.m_stall):
+        with m.If(self.m_ready):
             m.d.sync += [
                 self.rvfi.trap.eq(reduce(or_, (
                     self.m_fetch_misaligned,
@@ -105,7 +116,7 @@ class RVFIController(Elaboratable):
                     self.m_load_misaligned,
                     self.m_store_misaligned
                 ))),
-                self.rvfi.intr.eq(self.m_pc_rdata == self.mtvec_r_base << 2)
+                self.rvfi.intr.eq(self.m_pc_rdata == (m_mtvec_base << 2))
             ]
 
         m.d.comb += [
@@ -117,29 +128,25 @@ class RVFIController(Elaboratable):
 
         x_rs1_addr  = Signal.like(self.rvfi.rs1_addr)
         x_rs2_addr  = Signal.like(self.rvfi.rs2_addr)
-        x_rs1_rdata = Signal.like(self.rvfi.rs1_rdata)
-        x_rs2_rdata = Signal.like(self.rvfi.rs2_rdata)
 
         m_rs1_addr  = Signal.like(self.rvfi.rs1_addr)
         m_rs2_addr  = Signal.like(self.rvfi.rs2_addr)
         m_rs1_rdata = Signal.like(self.rvfi.rs1_rdata)
         m_rs2_rdata = Signal.like(self.rvfi.rs2_rdata)
 
-        with m.If(~self.d_stall):
+        with m.If(self.d_ready):
             m.d.sync += [
                 x_rs1_addr.eq(self.d_rs1_addr),
                 x_rs2_addr.eq(self.d_rs2_addr),
-                x_rs1_rdata.eq(self.d_rs1_rdata),
-                x_rs2_rdata.eq(self.d_rs2_rdata)
             ]
-        with m.If(~self.x_stall):
+        with m.If(self.x_ready):
             m.d.sync += [
                 m_rs1_addr.eq(x_rs1_addr),
                 m_rs2_addr.eq(x_rs2_addr),
-                m_rs1_rdata.eq(x_rs1_rdata),
-                m_rs2_rdata.eq(x_rs2_rdata)
+                m_rs1_rdata.eq(self.x_rs1_rdata),
+                m_rs2_rdata.eq(self.x_rs2_rdata)
             ]
-        with m.If(~self.m_stall):
+        with m.If(self.m_ready):
             m.d.sync += [
                 self.rvfi.rs1_addr.eq(m_rs1_addr),
                 self.rvfi.rs2_addr.eq(m_rs2_addr),
@@ -157,15 +164,15 @@ class RVFIController(Elaboratable):
         m_pc_wdata = Signal.like(self.rvfi.pc_wdata)
 
         with m.If(self.m_exception):
-            m.d.comb += m_pc_wdata.eq(self.mtvec_r_base << 2)
+            m.d.comb += m_pc_wdata.eq(m_mtvec_base << 2)
         with m.Elif(self.m_mret):
-            m.d.comb += m_pc_wdata.eq(self.mepc_r_value)
+            m.d.comb += m_pc_wdata.eq(m_mepc_base << 2)
         with m.Elif(self.m_branch_taken):
             m.d.comb += m_pc_wdata.eq(self.m_branch_target)
         with m.Else():
             m.d.comb += m_pc_wdata.eq(self.m_pc_rdata + 4)
 
-        with m.If(~self.m_stall):
+        with m.If(self.m_ready):
             m.d.sync += [
                 self.rvfi.pc_rdata.eq(self.m_pc_rdata),
                 self.rvfi.pc_wdata.eq(m_pc_wdata)
@@ -178,14 +185,14 @@ class RVFIController(Elaboratable):
         m_mem_rmask = Signal.like(self.rvfi.mem_rmask)
         m_mem_wdata = Signal.like(self.rvfi.mem_wdata)
 
-        with m.If(~self.x_stall):
+        with m.If(self.x_ready):
             m.d.sync += [
                 m_mem_addr.eq(self.x_mem_addr),
                 m_mem_wmask.eq(self.x_mem_wmask),
                 m_mem_rmask.eq(self.x_mem_rmask),
                 m_mem_wdata.eq(self.x_mem_wdata)
             ]
-        with m.If(~self.m_stall):
+        with m.If(self.m_ready):
             m.d.sync += [
                 self.rvfi.mem_addr.eq(m_mem_addr),
                 self.rvfi.mem_wmask.eq(m_mem_wmask),

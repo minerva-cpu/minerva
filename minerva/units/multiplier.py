@@ -1,24 +1,25 @@
 from amaranth import *
+from amaranth.lib import wiring
+from amaranth.lib.wiring import In, Out
 
 from ..isa import Funct3
 
 
-__all__ = ["MultiplierInterface", "Multiplier", "DummyMultiplier"]
+__all__ = ["Multiplier", "DummyMultiplier"]
 
 
-class MultiplierInterface:
-    def __init__(self):
-        self.d_op     = Signal(3)
-        self.d_stall  = Signal()
-        self.x_src1   = Signal(32)
-        self.x_src2   = Signal(32)
-        self.x_stall  = Signal()
-        self.m_stall  = Signal()
+class Multiplier(wiring.Component):
+    d_op:     In(3)
+    d_ready:  In(1)
 
-        self.w_result = Signal(32)
+    x_src1:   In(32)
+    x_src2:   In(32)
+    x_ready:  In(1)
 
+    m_ready:  In(1)
 
-class Multiplier(MultiplierInterface, Elaboratable):
+    w_result: Out(32)
+
     def elaborate(self, platform):
         m = Module()
 
@@ -36,7 +37,7 @@ class Multiplier(MultiplierInterface, Elaboratable):
         x_src1_signed = Signal()
         x_src2_signed = Signal()
 
-        with m.If(~self.d_stall):
+        with m.If(self.d_ready):
             m.d.sync += [
                 x_low.eq(d_low),
                 x_src1_signed.eq(d_src1_signed),
@@ -56,7 +57,7 @@ class Multiplier(MultiplierInterface, Elaboratable):
         m_low = Signal()
         m_prod = Signal(signed(66))
 
-        with m.If(~self.x_stall):
+        with m.If(self.x_ready):
             m.d.sync += [
                 m_low.eq(x_low),
                 m_prod.eq(x_prod),
@@ -69,19 +70,30 @@ class Multiplier(MultiplierInterface, Elaboratable):
         with m.Else():
             m.d.comb += m_result.eq(m_prod[32:])
 
-        with m.If(~self.m_stall):
+        with m.If(self.m_ready):
             m.d.sync += self.w_result.eq(m_result)
 
         return m
 
 
-class DummyMultiplier(MultiplierInterface, Elaboratable):
+class DummyMultiplier(wiring.Component):
+    d_op:     In(3)
+    d_ready:  In(1)
+
+    x_src1:   In(32)
+    x_src2:   In(32)
+    x_ready:  In(1)
+
+    m_ready:  In(1)
+
+    w_result: Out(32)
+
     def elaborate(self, platform):
         m = Module()
 
         x_op = Signal.like(self.d_op)
 
-        with m.If(~self.x_stall):
+        with m.If(self.x_ready):
             m.d.sync += x_op.eq(self.d_op)
 
         x_result = Signal.like(self.w_result)
@@ -99,9 +111,9 @@ class DummyMultiplier(MultiplierInterface, Elaboratable):
             with m.Case(Funct3.MULHU):
                 m.d.comb += x_result.eq((self.x_src1 + self.x_src2) ^ C(0x949ce5e8))
 
-        with m.If(~self.x_stall):
+        with m.If(self.x_ready):
             m.d.sync += m_result.eq(x_result)
-        with m.If(~self.m_stall):
+        with m.If(self.m_ready):
             m.d.sync += self.w_result.eq(m_result)
 
         return m

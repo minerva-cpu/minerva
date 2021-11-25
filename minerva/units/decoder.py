@@ -3,6 +3,8 @@ from itertools import starmap
 from operator import or_
 
 from amaranth import *
+from amaranth.lib import wiring
+from amaranth.lib.wiring import In, Out
 
 from ..isa import Opcode, Funct3, Funct7, Funct12
 
@@ -19,45 +21,48 @@ class Type:
     J = 5
 
 
-class InstructionDecoder(Elaboratable):
+class InstructionDecoder(wiring.Component):
+    instruction: In(32)
+    rd:          Out(5)
+    rd_we:       Out(1)
+    rs1:         Out(5)
+    rs1_re:      Out(1)
+    rs2:         Out(5)
+    rs2_re:      Out(1)
+    immediate:   Out(signed(32))
+    bypass_x:    Out(1)
+    bypass_m:    Out(1)
+    load:        Out(1)
+    store:       Out(1)
+    fence_i:     Out(1)
+    adder:       Out(1)
+    adder_sub:   Out(1)
+    logic:       Out(1)
+    multiply:    Out(1)
+    divide:      Out(1)
+    shift:       Out(1)
+    direction:   Out(1)
+    sext:        Out(1)
+    lui:         Out(1)
+    auipc:       Out(1)
+    jump:        Out(1)
+    branch:      Out(1)
+    compare:     Out(1)
+    csr:         Out(1)
+    csr_we:      Out(1)
+    csr_fmt_i:   Out(1)
+    csr_set:     Out(1)
+    csr_clear:   Out(1)
+    privileged:  Out(1)
+    ecall:       Out(1)
+    ebreak:      Out(1)
+    mret:        Out(1)
+    funct3:      Out(3)
+    illegal:     Out(1)
+
     def __init__(self, with_muldiv):
-        self.with_muldiv = with_muldiv
-
-        self.instruction = Signal(32)
-
-        self.rd = Signal(5)
-        self.rd_we = Signal()
-        self.rs1 = Signal(5)
-        self.rs1_re = Signal()
-        self.rs2 = Signal(5)
-        self.rs2_re = Signal()
-        self.immediate = Signal(signed(32))
-        self.bypass_x = Signal()
-        self.bypass_m = Signal()
-        self.load = Signal()
-        self.store = Signal()
-        self.fence_i = Signal()
-        self.adder = Signal()
-        self.adder_sub = Signal()
-        self.logic = Signal()
-        self.multiply = Signal()
-        self.divide = Signal()
-        self.shift = Signal()
-        self.direction = Signal()
-        self.sext = Signal()
-        self.lui = Signal()
-        self.auipc = Signal()
-        self.jump = Signal()
-        self.branch = Signal()
-        self.compare = Signal()
-        self.csr = Signal()
-        self.csr_we = Signal()
-        self.privileged = Signal()
-        self.ecall = Signal()
-        self.ebreak = Signal()
-        self.mret = Signal()
-        self.funct3 = Signal(3)
-        self.illegal = Signal()
+        self._with_muldiv = with_muldiv
+        super().__init__()
 
     def elaborate(self, platform):
         m = Module()
@@ -130,7 +135,8 @@ class InstructionDecoder(Elaboratable):
             self.rs1.eq(insn[15:20]),
             self.rs2.eq(insn[20:25]),
 
-            self.rd_we.eq(reduce(or_, (fmt == T for T in (Type.R, Type.I, Type.U, Type.J)))),
+            self.rd_we.eq(reduce(or_, (fmt == T for T in (Type.R, Type.I, Type.U, Type.J))) &
+                          ~self.fence_i),
             self.rs1_re.eq(reduce(or_, (fmt == T for T in (Type.R, Type.I, Type.S, Type.B)))),
             self.rs2_re.eq(reduce(or_, (fmt == T for T in (Type.R, Type.S, Type.B)))),
 
@@ -179,7 +185,7 @@ class InstructionDecoder(Elaboratable):
             ])),
         ]
 
-        if self.with_muldiv:
+        if self._with_muldiv:
             m.d.comb += [
                 self.multiply.eq(matcher([
                     (Opcode.OP_32, Funct3.MUL,    Funct7.MULDIV), # mul
@@ -242,6 +248,9 @@ class InstructionDecoder(Elaboratable):
                 (Opcode.SYSTEM, Funct3.CSRRCI)  # csrrci
             ])),
             self.csr_we.eq(~funct3[1] | (self.rs1 != 0)),
+            self.csr_fmt_i.eq(funct3[2]),
+            self.csr_set.eq(~funct3[0] & funct3[1]),
+            self.csr_clear.eq(funct3[0] & funct3[1]),
 
             self.privileged.eq((opcode == Opcode.SYSTEM) & (funct3 == Funct3.PRIV)),
             self.ecall.eq(self.privileged & (funct12 == Funct12.ECALL)),

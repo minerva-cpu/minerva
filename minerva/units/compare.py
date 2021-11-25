@@ -1,4 +1,6 @@
 from amaranth import *
+from amaranth.lib import wiring
+from amaranth.lib.wiring import In, Out
 
 from ..isa import Funct3
 
@@ -6,15 +8,13 @@ from ..isa import Funct3
 __all__ = ["CompareUnit"]
 
 
-class CompareUnit(Elaboratable):
-    def __init__(self):
-        self.op = Signal(3)
-        self.zero = Signal()
-        self.negative = Signal()
-        self.overflow = Signal()
-        self.carry = Signal()
-
-        self.condition_met = Signal()
+class CompareUnit(wiring.Component):
+    op:            In(3)
+    zero:          In(1)
+    negative:      In(1)
+    overflow:      In(1)
+    carry:         In(1)
+    condition_met: Out(1)
 
     def elaborate(self, platform):
         m = Module()

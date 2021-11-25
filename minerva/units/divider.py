@@ -1,24 +1,22 @@
 from amaranth import *
+from amaranth.lib import wiring
+from amaranth.lib.wiring import In, Out
 
 from ..isa import Funct3
 
 
-__all__ = ["DividerInterface", "Divider", "DummyDivider"]
+__all__ = ["Divider", "DummyDivider"]
 
 
-class DividerInterface:
-    def __init__(self):
-        self.x_op     = Signal(3)
-        self.x_src1   = Signal(32)
-        self.x_src2   = Signal(32)
-        self.x_valid  = Signal()
-        self.x_stall  = Signal()
+class Divider(wiring.Component):
+    x_op:     In(3)
+    x_src1:   In(32)
+    x_src2:   In(32)
+    x_valid:  In(1)
+    x_ready:  In(1)
+    m_result: Out(32)
+    m_busy:   Out(1)
 
-        self.m_result = Signal(32)
-        self.m_busy   = Signal()
-
-
-class Divider(DividerInterface, Elaboratable):
     def elaborate(self, platform):
         m = Module()
 
@@ -52,7 +50,7 @@ class Divider(DividerInterface, Elaboratable):
         m_modulus  = Signal()
         m_negative = Signal()
 
-        timer      = Signal(range(33), reset=32)
+        timer      = Signal(range(33), init=32)
         quotient   = Signal(32)
         divisor    = Signal(32)
         remainder  = Signal(32)
@@ -60,7 +58,7 @@ class Divider(DividerInterface, Elaboratable):
 
         with m.FSM() as fsm:
             with m.State("IDLE"):
-                with m.If(x_enable & self.x_valid & ~self.x_stall):
+                with m.If(x_enable & self.x_valid & self.x_ready):
                     m.d.sync += [
                         m_modulus.eq(x_modulus),
                         m_negative.eq(x_negative)
@@ -87,7 +85,7 @@ class Divider(DividerInterface, Elaboratable):
                             quotient.eq(x_dividend),
                             remainder.eq(0),
                             divisor.eq(x_divisor),
-                            timer.eq(timer.reset)
+                            timer.eq(timer.init)
                         ]
                         m.next = "DIVIDE"
 
@@ -118,7 +116,15 @@ class Divider(DividerInterface, Elaboratable):
         return m
 
 
-class DummyDivider(DividerInterface, Elaboratable):
+class DummyDivider(wiring.Component):
+    x_op:     In(3)
+    x_src1:   In(32)
+    x_src2:   In(32)
+    x_valid:  In(1)
+    x_ready:  In(1)
+    m_result: Out(32)
+    m_busy:   Out(1)
+
     def elaborate(self, platform):
         m = Module()
 
@@ -136,7 +142,7 @@ class DummyDivider(DividerInterface, Elaboratable):
             with m.Case(Funct3.REMU):
                 m.d.comb += x_result.eq((self.x_src1 - self.x_src2) ^ C(0x3138d0e1))
 
-        with m.If(~self.x_stall):
+        with m.If(self.x_ready):
             m.d.sync += self.m_result.eq(x_result)
 
         m.d.comb += self.m_busy.eq(C(0))

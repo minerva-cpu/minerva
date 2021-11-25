@@ -1,24 +1,164 @@
 from amaranth import *
+from amaranth.lib import wiring
+from amaranth.lib.data import StructLayout
+from amaranth.lib.memory import Memory
+from amaranth.lib.wiring import In, Out
 
-from .mem import ForwardingMemory
+
+__all__ = ["RegisterBypass", "RegisterFile"]
 
 
-__all__ = ["File"]
+class RegisterBypass(wiring.Component):
+    d_rp_addr:  In(5)
+    d_rp_raw:   Out(1)
+    d_rp_rdy:   Out(1)
+    d_rp_data:  Out(32)
 
+    x_wp_addr:  In(5)
+    x_wp_en:    In(1)
+    x_wp_rdy:   In(1)
+    x_wp_data:  In(32)
 
-class File(Elaboratable):
-    def __init__(self, *, width, depth, init=None, name=None, attrs=None):
-        self._mem  = ForwardingMemory(width=width, depth=depth, init=init, name=name, attrs=attrs)
-        self.rp1   = self._mem.read_port()
-        self.rp2   = self._mem.read_port()
-        self.wp    = self._mem.write_port()
+    m_wp_addr:  In(5)
+    m_wp_en:    In(1)
+    m_wp_rdy:   In(1)
+    m_wp_data:  In(32)
 
-        self.width = self._mem.width
-        self.depth = self._mem.depth
-        self.attrs = self._mem.attrs
-        self.init  = self._mem.init
+    w_wp_addr:  In(5)
+    w_wp_en:    In(1)
+    w_wp_data:  In(32)
 
     def elaborate(self, platform):
         m = Module()
-        m.submodules.mem = self._mem
+
+        d_rp_raw = Signal(StructLayout({"d": 1, "x": 1, "m": 1, "w": 1}))
+        d_rp_sel = Signal.like(d_rp_raw)
+        d_rp_rdy = Signal.like(d_rp_raw)
+
+        m.d.comb += [
+            d_rp_raw.d.eq(self.d_rp_addr == 0),
+            d_rp_raw.x.eq(self.x_wp_en & (self.d_rp_addr == self.x_wp_addr)),
+            d_rp_raw.m.eq(self.m_wp_en & (self.d_rp_addr == self.m_wp_addr)),
+            d_rp_raw.w.eq(self.w_wp_en & (self.d_rp_addr == self.w_wp_addr)),
+
+            d_rp_sel.eq(d_rp_raw.as_value() & (-d_rp_raw.as_value())), # isolate rightmost 1-bit
+
+            d_rp_rdy.d.eq(d_rp_sel.d),
+            d_rp_rdy.x.eq(d_rp_sel.x & self.x_wp_rdy),
+            d_rp_rdy.m.eq(d_rp_sel.m & self.m_wp_rdy),
+            d_rp_rdy.w.eq(d_rp_sel.w),
+        ]
+
+        d_rp_data_mux  = 0
+        d_rp_data_mux |= Mux(d_rp_sel.x, self.x_wp_data, 0)
+        d_rp_data_mux |= Mux(d_rp_sel.m, self.m_wp_data, 0)
+        d_rp_data_mux |= Mux(d_rp_sel.w, self.w_wp_data, 0)
+
+        m.d.comb += [
+            self.d_rp_raw .eq(d_rp_raw.as_value().any()),
+            self.d_rp_rdy .eq(d_rp_rdy.as_value().any()),
+            self.d_rp_data.eq(d_rp_data_mux),
+        ]
+
+        return m
+
+
+class RegisterFile(wiring.Component):
+    d_rp1_addr: In(5)
+    d_rp1_en:   In(1)
+    d_rp1_rdy:  Out(1)
+    d_rp2_addr: In(5)
+    d_rp2_en:   In(1)
+    d_rp2_rdy:  Out(1)
+    d_ready:    In(1)
+
+    x_rp1_data: Out(32)
+    x_rp2_data: Out(32)
+    x_wp_addr:  In(5)
+    x_wp_en:    In(1)
+    x_wp_rdy:   In(1)
+    x_wp_data:  In(32)
+
+    m_wp_addr:  In(5)
+    m_wp_en:    In(1)
+    m_wp_rdy:   In(1)
+    m_wp_data:  In(32)
+
+    w_wp_addr:  In(5)
+    w_wp_en:    In(1)
+    w_wp_data:  In(32)
+
+    def elaborate(self, platform):
+        m = Module()
+
+        m.submodules.bypass1 = bypass1 = RegisterBypass()
+        m.submodules.bypass2 = bypass2 = RegisterBypass()
+
+        m.d.comb += [
+            bypass1.d_rp_addr.eq(self.d_rp1_addr),
+            bypass2.d_rp_addr.eq(self.d_rp2_addr),
+        ]
+
+        for bypass in (bypass1, bypass2):
+            m.d.comb += [
+                bypass.x_wp_addr.eq(self.x_wp_addr),
+                bypass.x_wp_en  .eq(self.x_wp_en),
+                bypass.x_wp_rdy .eq(self.x_wp_rdy),
+                bypass.x_wp_data.eq(self.x_wp_data),
+
+                bypass.m_wp_addr.eq(self.m_wp_addr),
+                bypass.m_wp_en  .eq(self.m_wp_en),
+                bypass.m_wp_rdy .eq(self.m_wp_rdy),
+                bypass.m_wp_data.eq(self.m_wp_data),
+
+                bypass.w_wp_addr.eq(self.w_wp_addr),
+                bypass.w_wp_en  .eq(self.w_wp_en),
+                bypass.w_wp_data.eq(self.w_wp_data),
+            ]
+
+        m.d.comb += [
+            self.d_rp1_rdy.eq(~bypass1.d_rp_raw | bypass1.d_rp_rdy),
+            self.d_rp2_rdy.eq(~bypass2.d_rp_raw | bypass2.d_rp_rdy),
+        ]
+
+        m.submodules.mem1 = mem1 = Memory(shape=unsigned(32), depth=32, init=[0] * 32)
+        m.submodules.mem2 = mem2 = Memory(shape=unsigned(32), depth=32, init=[0] * 32)
+
+        mem1_wp = mem1.write_port()
+        mem1_rp = mem1.read_port()
+        mem2_wp = mem2.write_port()
+        mem2_rp = mem2.read_port()
+
+        m.d.comb += [
+            mem1_rp.addr.eq(self.d_rp1_addr),
+            mem1_rp.en  .eq(self.d_ready),
+            mem2_rp.addr.eq(self.d_rp2_addr),
+            mem2_rp.en  .eq(self.d_ready),
+        ]
+
+        for mem_wp in (mem1_wp, mem2_wp):
+            m.d.comb += [
+                mem_wp.addr.eq(self.w_wp_addr),
+                mem_wp.en  .eq(self.w_wp_en),
+                mem_wp.data.eq(self.w_wp_data),
+            ]
+
+        x_bypass1_raw  = Signal()
+        x_bypass1_data = Signal(32)
+        x_bypass2_raw  = Signal()
+        x_bypass2_data = Signal(32)
+
+        with m.If(self.d_ready):
+            m.d.sync += [
+                x_bypass1_raw .eq(bypass1.d_rp_raw),
+                x_bypass1_data.eq(bypass1.d_rp_data),
+                x_bypass2_raw .eq(bypass2.d_rp_raw),
+                x_bypass2_data.eq(bypass2.d_rp_data),
+            ]
+
+        m.d.comb += [
+            self.x_rp1_data.eq(Mux(x_bypass1_raw, x_bypass1_data, mem1_rp.data)),
+            self.x_rp2_data.eq(Mux(x_bypass2_raw, x_bypass2_data, mem2_rp.data)),
+        ]
+
         return m

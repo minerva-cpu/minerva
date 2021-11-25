@@ -56,7 +56,7 @@ class FormalTestCase(unittest.TestCase):
             script=script,
             rtlil=rtlil.convert(Fragment.get(spec, platform="formal"), ports=())
         )
-        with subprocess.Popen(["sby", "-f", "-d", spec_name], cwd=spec_dir,
+        with subprocess.Popen(["pdm", "run", "yowasp-sby", "-f", "-d", spec_name], cwd=spec_dir,
                               universal_newlines=True,
                               stdin=subprocess.PIPE, stdout=subprocess.PIPE) as proc:
             stdout, stderr = proc.communicate(config)

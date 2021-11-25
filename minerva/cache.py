@@ -1,15 +1,37 @@
 from amaranth import *
 from amaranth.asserts import *
-from amaranth.lib.coding import Encoder
-from amaranth.utils import log2_int, bits_for
-
-from .mem import ForwardingMemory
+from amaranth.lib import wiring
+from amaranth.lib.wiring import In, Out
+from amaranth.lib.data import StructLayout, ArrayLayout
+from amaranth.lib.memory import *
+from amaranth.utils import exact_log2
 
 
 __all__ = ["L1Cache"]
 
 
-class L1Cache(Elaboratable):
+class _L1CacheWay(Elaboratable):
+    def __init__(self, cache):
+        self._tag_mem = Memory(shape=StructLayout({"tag": cache.s1_addr.tag.shape(), "valid": 1}),
+                               depth=cache.nlines,
+                               init=[{"tag": 0, "valid": 0}] * cache.nlines)
+        self._dat_mem = Memory(shape=unsigned(32),
+                               depth=cache.nlines * cache.nwords,
+                               init=[0] * cache.nlines * cache.nwords)
+
+        self.tag_rp = self._tag_mem.read_port()
+        self.tag_wp = self._tag_mem.write_port()
+        self.dat_rp = self._dat_mem.read_port()
+        self.dat_wp = self._dat_mem.write_port()
+
+    def elaborate(self, platform):
+        m = Module()
+        m.submodules.tag_mem = self._tag_mem
+        m.submodules.dat_mem = self._dat_mem
+        return m
+
+
+class L1Cache(wiring.Component):
     def __init__(self, nways, nlines, nwords, base, limit):
         if not isinstance(nlines, int):
             raise TypeError("nlines must be an integer, not {!r}".format(nlines))
@@ -38,151 +60,140 @@ class L1Cache(Elaboratable):
                              "of {:#x}"
                              .format(base, limit - base))
 
-        self.nways = nways
+        self.nways  = nways
         self.nlines = nlines
         self.nwords = nwords
-        self.base = base
-        self.limit = limit
+        self.base   = base  >> 2
+        self.limit  = limit >> 2
 
-        offsetbits = log2_int(nwords)
-        linebits = log2_int(nlines)
-        tagbits = bits_for(limit) - linebits - offsetbits - 2
+        wordbits = exact_log2(nwords)
+        linebits = exact_log2(nlines)
+        tagbits  = exact_log2(self.limit - self.base) - linebits - wordbits
 
-        self.s1_addr = Record([("offset", offsetbits), ("line", linebits), ("tag", tagbits)])
-        self.s1_stall = Signal()
-        self.s1_valid = Signal()
-        self.s2_addr = Record.like(self.s1_addr)
-        self.s2_re = Signal()
-        self.s2_flush = Signal()
-        self.s2_evict = Signal()
-        self.s2_valid = Signal()
-        self.bus_valid = Signal()
-        self.bus_error = Signal()
-        self.bus_rdata = Signal(32)
+        addr_layout = StructLayout({
+            "word": wordbits,
+            "line": linebits,
+            "tag":  tagbits,
+        })
 
-        self.s2_miss = Signal()
-        self.s2_flush_ack = Signal()
-        self.s2_rdata = Signal(32)
-        self.bus_re = Signal()
-        self.bus_addr = Record.like(self.s1_addr)
-        self.bus_last = Signal()
+        super().__init__({
+            "s1_addr":  In(addr_layout),
+            "s1_ready": In(1),
+
+            "s2_addr":  In(addr_layout),
+            "s2_op":    In(StructLayout({"read": 1, "flush": 1, "evict": 1})),
+            "s2_valid": In(1),
+            "s2_busy":  Out(1, init=1),
+            "s2_data":  Out(32),
+
+            "bus_addr": Out(addr_layout),
+            "bus_req":  Out(1),
+            "bus_last": Out(1),
+            "bus_ack":  In(1),
+            "bus_data": In(32),
+        })
+
+        self._ways = tuple(_L1CacheWay(self) for _ in range(nways))
 
     def elaborate(self, platform):
         m = Module()
 
-        ways = Array(Record([("data",   self.nwords * 32),
-                             ("tag",    self.s2_addr.tag.shape()),
-                             ("valid",  1),
-                             ("bus_re", 1)])
-                     for _ in range(self.nways))
+        mem_rp_addr = Signal(StructLayout({"word": self.s1_addr.word.shape(),
+                                           "line": self.s1_addr.line.shape()}))
+        mem_rp_addr_saved = Signal.like(mem_rp_addr)
 
-        if self.nways == 1:
-            way_lru = Const(0)
-        elif self.nways == 2:
-            way_lru = Signal()
-            with m.If(self.bus_re & self.bus_valid & self.bus_last & ~self.bus_error):
-                m.d.sync += way_lru.eq(~way_lru)
+        with m.If(self.s1_ready):
+            m.d.comb += mem_rp_addr.eq(Cat(self.s1_addr.word, self.s1_addr.line))
+            m.d.sync += mem_rp_addr_saved.eq(mem_rp_addr)
+        with m.Else():
+            m.d.comb += mem_rp_addr.eq(mem_rp_addr_saved)
 
-        m.d.comb += ways[way_lru].bus_re.eq(self.bus_re)
+        way_hit = Signal(len(self._ways))
+        way_lru = Signal(range(len(self._ways)))
 
-        way_hit = m.submodules.way_hit = Encoder(self.nways)
-        for j, way in enumerate(ways):
-            m.d.comb += way_hit.i[j].eq((way.tag == self.s2_addr.tag) & way.valid)
+        for i, way in enumerate(self._ways):
+            m.submodules[f"way_{i}"] = way
+            m.d.comb += [
+                way.tag_rp.addr.eq(mem_rp_addr.line),
+                way.dat_rp.addr.eq(mem_rp_addr),
+                way_hit[i].eq(way.tag_rp.data.valid & (way.tag_rp.data.tag == self.s2_addr.tag)),
+            ]
 
-        m.d.comb += [
-            self.s2_miss.eq(way_hit.n),
-            self.s2_rdata.eq(ways[way_hit.o].data.word_select(self.s2_addr.offset, 32))
-        ]
+        if len(self._ways) == 1:
+            m.d.comb += self.s2_data.eq(self._ways[0].dat_rp.data)
+        if len(self._ways) == 2:
+            s2_data_mux  = Mux(way_hit[0], self._ways[0].dat_rp.data, 0)
+            s2_data_mux |= Mux(way_hit[1], self._ways[1].dat_rp.data, 0)
+            m.d.comb += self.s2_data.eq(s2_data_mux)
 
-        flush_line = Signal(range(self.nlines), reset=self.nlines - 1)
-        with m.If(self.s1_valid & ~self.s1_stall):
-            m.d.sync += self.s2_flush_ack.eq(0)
+        flush_line = Signal(range(self.nlines), init=self.nlines - 1)
+        flush_done = Signal()
+
+        with m.If(self.s1_ready):
+            m.d.sync += flush_line.eq(flush_line.init)
+
+        m.d.comb += flush_done.eq(flush_line == 0)
 
         with m.FSM() as fsm:
-            last_offset = Signal.like(self.s2_addr.offset)
-
             with m.State("CHECK"):
-                with m.If(self.s2_valid):
-                    with m.If(self.s2_flush & ~self.s2_flush_ack):
-                        m.d.sync += flush_line.eq(flush_line.reset)
-                        m.next = "FLUSH"
-                    with m.Elif(self.s2_re & self.s2_miss):
-                        m.d.sync += [
-                            self.bus_addr.eq(self.s2_addr),
-                            self.bus_re.eq(1),
-                            last_offset.eq(self.s2_addr.offset - 1)
-                        ]
-                        m.next = "REFILL"
-
-            with m.State("REFILL"):
-                m.d.comb += self.bus_last.eq(self.bus_addr.offset == last_offset)
-                with m.If(~self.s1_stall):
-                    m.d.sync += self.bus_re.eq(0)
-                    m.next = "CHECK"
+                with m.If(self.s2_op.flush & self.s2_valid & ~flush_done):
+                    m.next = "FLUSH"
+                with m.Elif(self.s2_op.evict & self.s2_valid & way_hit.any()):
+                    m.next = "EVICT"
+                with m.Elif(self.s2_op.read & self.s2_valid & ~way_hit.any()):
+                    m.d.sync += [
+                        self.bus_addr.word.eq(0),
+                        self.bus_addr.line.eq(self.s2_addr.line),
+                        self.bus_addr.tag .eq(self.s2_addr.tag),
+                    ]
+                    m.next = "REFILL"
                 with m.Else():
-                    with m.If(self.bus_valid):
-                        m.d.sync += self.bus_addr.offset.eq(self.bus_addr.offset + 1)
-                    with m.If(self.bus_valid & self.bus_last | self.bus_error):
-                        m.d.sync += self.bus_re.eq(0)
+                    m.d.comb += self.s2_busy.eq(0)
 
             with m.State("FLUSH"):
-                with m.If(flush_line == 0):
-                    m.d.sync += self.s2_flush_ack.eq(1)
+                for way in self._ways:
+                    m.d.comb += [
+                        way.tag_wp.addr.eq(flush_line),
+                        way.tag_wp.en  .eq(1),
+                        way.tag_wp.data.eq(0),
+                    ]
+                with m.If(flush_done):
                     m.next = "CHECK"
                 with m.Else():
                     m.d.sync += flush_line.eq(flush_line - 1)
 
+            with m.State("EVICT"):
+                for i, way in enumerate(self._ways):
+                    m.d.comb += [
+                        way.tag_wp.addr.eq(mem_rp_addr.line),
+                        way.tag_wp.en  .eq(way_hit[i]),
+                        way.tag_wp.data.eq(0),
+                    ]
+                m.next = "CHECK"
+
+            with m.State("REFILL"):
+                m.d.comb += [
+                    self.bus_req .eq(1),
+                    self.bus_last.eq(self.bus_addr.word == Const(self.nwords - 1)),
+                ]
+                for i, way in enumerate(self._ways):
+                    m.d.comb += [
+                        way.tag_wp.addr.eq(self.bus_addr.line),
+                        way.tag_wp.en  .eq(self.bus_ack & (way_lru == i)),
+                        way.tag_wp.data.eq(Cat(self.bus_addr.tag, self.bus_last)),
+                        way.dat_wp.addr.eq(Cat(self.bus_addr.word, self.bus_addr.line)),
+                        way.dat_wp.en  .eq(self.bus_ack & (way_lru == i)),
+                        way.dat_wp.data.eq(self.bus_data),
+                    ]
+                    with m.If(self.bus_ack):
+                        with m.If(self.bus_last):
+                            m.d.sync += way_lru.eq(~way_lru)
+                            m.next = "CHECK"
+                        with m.Else():
+                            m.d.sync += self.bus_addr.word.eq(self.bus_addr.word + 1)
+
         if platform == "formal":
             with m.If(Initial()):
                 m.d.comb += Assume(fsm.ongoing("CHECK"))
-
-        for i, way in enumerate(ways):
-            tag_mem    = ForwardingMemory(width=1 + len(way.tag), depth=self.nlines)
-            tag_mem_rp = tag_mem.read_port()
-            tag_mem_wp = tag_mem.write_port()
-            m.submodules[f"tag_mem_{i}"] = tag_mem
-
-            dat_mem    = ForwardingMemory(width=len(way.data), depth=self.nlines)
-            dat_mem_rp = dat_mem.read_port()
-            dat_mem_wp = dat_mem.write_port(granularity=32)
-            m.submodules[f"dat_mem_{i}"] = dat_mem
-
-            mem_rp_addr = Signal.like(self.s1_addr.line)
-            with m.If(self.s1_stall):
-                m.d.comb += mem_rp_addr.eq(self.s2_addr.line)
-            with m.Else():
-                m.d.comb += mem_rp_addr.eq(self.s1_addr.line)
-
-            m.d.comb += [
-                tag_mem_rp.addr.eq(mem_rp_addr),
-                dat_mem_rp.addr.eq(mem_rp_addr),
-                Cat(way.tag, way.valid).eq(tag_mem_rp.data),
-                way.data.eq(dat_mem_rp.data),
-            ]
-
-            with m.If(fsm.ongoing("FLUSH")):
-                m.d.comb += [
-                    tag_mem_wp.addr.eq(flush_line),
-                    tag_mem_wp.en.eq(1),
-                    tag_mem_wp.data.eq(0),
-                ]
-            with m.Elif(way.bus_re):
-                m.d.comb += [
-                    tag_mem_wp.addr.eq(self.bus_addr.line),
-                    tag_mem_wp.en.eq(way.bus_re & self.bus_valid),
-                    tag_mem_wp.data.eq(Cat(self.bus_addr.tag, self.bus_last & ~self.bus_error)),
-                ]
-            with m.Else():
-                m.d.comb += [
-                    tag_mem_wp.addr.eq(self.s2_addr.line),
-                    tag_mem_wp.en.eq(self.s2_evict & self.s2_valid & (way.tag == self.s2_addr.tag)),
-                    tag_mem_wp.data.eq(0),
-                ]
-
-            m.d.comb += [
-                dat_mem_wp.addr.eq(self.bus_addr.line),
-                dat_mem_wp.en.bit_select(self.bus_addr.offset, 1).eq(way.bus_re & self.bus_valid),
-                dat_mem_wp.data.eq(self.bus_rdata.replicate(self.nwords)),
-            ]
 
         return m

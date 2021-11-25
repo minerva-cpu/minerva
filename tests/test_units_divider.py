@@ -10,21 +10,25 @@ from minerva.isa import Funct3
 def test_op(funct3, src1, src2, result):
     def test(self):
         sim = Simulator(self.dut)
-        def process():
-            yield self.dut.x_op.eq(funct3)
-            yield self.dut.x_src1.eq(src1)
-            yield self.dut.x_src2.eq(src2)
-            yield self.dut.x_valid.eq(1)
-            yield self.dut.x_stall.eq(0)
-            yield Tick()
-            yield self.dut.x_valid.eq(0)
-            yield Tick()
-            while (yield self.dut.m_busy):
-                yield Tick()
-            self.assertEqual((yield self.dut.m_result), result)
+
+        async def testbench(ctx):
+            ctx.set(self.dut.x_op, funct3)
+            ctx.set(self.dut.x_src1, src1)
+            ctx.set(self.dut.x_src2, src2)
+            ctx.set(self.dut.x_valid, 1)
+            ctx.set(self.dut.x_ready, 1)
+            await ctx.tick()
+            ctx.set(self.dut.x_valid, 0)
+            await ctx.tick()
+            while ctx.get(self.dut.m_busy):
+                await ctx.tick()
+            self.assertEqual(ctx.get(self.dut.m_result), result)
+
         sim.add_clock(1e-6)
-        sim.add_sync_process(process)
-        sim.run()
+        sim.add_testbench(testbench)
+        with sim.write_vcd(vcd_file="dump.vcd"):
+            sim.run()
+
     return test
 
 

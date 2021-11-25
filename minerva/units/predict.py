@@ -1,19 +1,19 @@
 from amaranth import *
+from amaranth.lib import wiring
+from amaranth.lib.wiring import In, Out
 
 
 __all__ = ["BranchPredictor"]
 
 
-class BranchPredictor(Elaboratable):
-    def __init__(self):
-        self.d_branch = Signal()
-        self.d_jump = Signal()
-        self.d_offset = Signal(signed(32))
-        self.d_pc = Signal(32)
-        self.d_rs1_re = Signal()
-
-        self.d_branch_taken = Signal()
-        self.d_branch_target = Signal(32)
+class BranchPredictor(wiring.Component):
+    d_branch:        In(1)
+    d_jump:          In(1)
+    d_offset:        In(signed(32))
+    d_pc:            In(32)
+    d_rs1_re:        In(1)
+    d_branch_taken:  Out(1)
+    d_branch_target: Out(32)
 
     def elaborate(self, platform):
         m = Module()
