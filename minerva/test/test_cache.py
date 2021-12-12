@@ -1,6 +1,6 @@
-from nmigen import *
-from nmigen.test.utils import *
-from nmigen.asserts import *
+from amaranth import *
+from amaranth.test.utils import *
+from amaranth.asserts import *
 
 from ..cache import L1Cache
 

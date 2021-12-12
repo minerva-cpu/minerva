@@ -2,11 +2,11 @@
 
 ## A 32-bit RISC-V soft processor
 
-Minerva is a CPU core that currently implements the [RISC-V][1] RV32IM instruction set. Its microarchitecture is described in plain Python code using the [nMigen][2] toolbox.
+Minerva is a CPU core that currently implements the [RISC-V][1] RV32IM instruction set. Its microarchitecture is described in plain Python code using the [Amaranth][2] toolbox.
 
 ### Quick start
 
-Minerva requires Python 3.6+ and [nMigen][2]. Installation instructions for nMigen can be found [here](https://nmigen.info/nmigen/latest/install.html).
+Minerva requires Python 3.6+ and [Amaranth][2]. Installation instructions for Amaranth can be found [here](https://amaranth-lang.org/amaranth/latest/install.html).
 
     python setup.py install
     python cli.py generate > minerva.v
@@ -91,5 +91,5 @@ Minerva is released under the permissive two-clause BSD license.
 See LICENSE file for full copyright and license information.
 
 [1]: https://riscv.org/specifications/
-[2]: https://github.com/nmigen/nmigen/
+[2]: https://github.com/amaranth-lang/amaranth/
 [3]: https://github.com/m-labs/lm32/

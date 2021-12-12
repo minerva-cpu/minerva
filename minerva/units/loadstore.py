@@ -1,6 +1,6 @@
-from nmigen import *
-from nmigen.utils import log2_int
-from nmigen.lib.fifo import SyncFIFOBuffered
+from amaranth import *
+from amaranth.utils import log2_int
+from amaranth.lib.fifo import SyncFIFOBuffered
 
 from ..cache import *
 from ..isa import Funct3

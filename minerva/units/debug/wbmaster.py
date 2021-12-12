@@ -1,8 +1,8 @@
 from functools import reduce
 from operator import or_
 
-from nmigen import *
-from nmigen.hdl.rec import *
+from amaranth import *
+from amaranth.hdl.rec import *
 
 from ...wishbone import wishbone_layout
 from .dmi import *

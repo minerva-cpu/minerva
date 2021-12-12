@@ -1,7 +1,7 @@
 import unittest
 
-from nmigen import *
-from nmigen.back.pysim import *
+from amaranth import *
+from amaranth.back.pysim import *
 
 from ..units.divider import *
 from ..isa import Funct3
@@ -9,22 +9,22 @@ from ..isa import Funct3
 
 def test_op(funct3, src1, src2, result):
     def test(self):
-        with Simulator(self.dut) as sim:
-            def process():
-                yield self.dut.x_op.eq(funct3)
-                yield self.dut.x_src1.eq(src1)
-                yield self.dut.x_src2.eq(src2)
-                yield self.dut.x_valid.eq(1)
-                yield self.dut.x_stall.eq(0)
+        sim = Simulator(self.dut)
+        def process():
+            yield self.dut.x_op.eq(funct3)
+            yield self.dut.x_src1.eq(src1)
+            yield self.dut.x_src2.eq(src2)
+            yield self.dut.x_valid.eq(1)
+            yield self.dut.x_stall.eq(0)
+            yield Tick()
+            yield self.dut.x_valid.eq(0)
+            yield Tick()
+            while (yield self.dut.m_busy):
                 yield Tick()
-                yield self.dut.x_valid.eq(0)
-                yield Tick()
-                while (yield self.dut.m_busy):
-                    yield Tick()
-                self.assertEqual((yield self.dut.m_result), result)
-            sim.add_clock(1e-6)
-            sim.add_sync_process(process)
-            sim.run()
+            self.assertEqual((yield self.dut.m_result), result)
+        sim.add_clock(1e-6)
+        sim.add_sync_process(process)
+        sim.run()
     return test
 
 

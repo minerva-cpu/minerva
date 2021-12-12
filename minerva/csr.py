@@ -1,8 +1,8 @@
 from enum import Enum
 from collections import OrderedDict
 
-from nmigen import *
-from nmigen.utils import bits_for
+from amaranth import *
+from amaranth.utils import bits_for
 
 
 __all__ = ["CSRAccess", "CSR", "AutoCSR", "CSRFile"]

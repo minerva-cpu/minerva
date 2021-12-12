@@ -2,8 +2,8 @@ from functools import reduce
 from operator import or_
 from itertools import tee
 
-from nmigen import *
-from nmigen.lib.coding import PriorityEncoder
+from amaranth import *
+from amaranth.lib.coding import PriorityEncoder
 
 from .isa import *
 from .stage import *
