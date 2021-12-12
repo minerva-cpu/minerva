@@ -1,5 +1,5 @@
-from nmigen import *
-from nmigen.lib.coding import PriorityEncoder
+from amaranth import *
+from amaranth.lib.coding import PriorityEncoder
 
 from ..csr import *
 from ..isa import *

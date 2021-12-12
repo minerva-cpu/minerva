@@ -1,7 +1,7 @@
-from nmigen import *
-from nmigen.asserts import *
-from nmigen.lib.coding import Encoder
-from nmigen.utils import log2_int, bits_for
+from amaranth import *
+from amaranth.asserts import *
+from amaranth.lib.coding import Encoder
+from amaranth.utils import log2_int, bits_for
 
 from .mem import ForwardingMemory
 

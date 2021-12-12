@@ -1,5 +1,5 @@
-from nmigen import *
-from nmigen.utils import log2_int
+from amaranth import *
+from amaranth.utils import log2_int
 
 from ..cache import *
 from ..wishbone import *

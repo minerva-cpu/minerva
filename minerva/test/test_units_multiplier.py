@@ -1,7 +1,7 @@
 import unittest
 
-from nmigen import *
-from nmigen.sim import *
+from amaranth import *
+from amaranth.sim import *
 
 from ..units.multiplier import *
 from ..isa import Funct3

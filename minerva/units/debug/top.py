@@ -1,5 +1,5 @@
-from nmigen import *
-from nmigen.hdl.rec import *
+from amaranth import *
+from amaranth.hdl.rec import *
 
 
 from ...csr import *

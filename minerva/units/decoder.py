@@ -2,7 +2,7 @@ from functools import reduce
 from itertools import starmap
 from operator import or_
 
-from nmigen import *
+from amaranth import *
 
 from ..isa import Opcode, Funct3, Funct7, Funct12
 

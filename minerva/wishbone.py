@@ -1,6 +1,6 @@
-from nmigen import *
-from nmigen.hdl.rec import *
-from nmigen.lib.coding import *
+from amaranth import *
+from amaranth.hdl.rec import *
+from amaranth.lib.coding import *
 
 
 __all__ = ["Cycle", "wishbone_layout", "WishboneArbiter"]

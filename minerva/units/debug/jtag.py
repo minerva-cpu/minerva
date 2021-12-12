@@ -1,4 +1,4 @@
-from nmigen.hdl.rec import *
+from amaranth.hdl.rec import *
 
 
 __all__ = ["jtag_layout", "JTAGReg", "dtmcs_layout", "dmi_layout"]
