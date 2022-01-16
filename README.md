@@ -6,7 +6,7 @@ Minerva is a CPU core that currently implements the [RISC-V][1] RV32IM instructi
 
 ### Quick start
 
-Minerva requires Python 3.6+ and [Amaranth][2]. Installation instructions for Amaranth can be found [here](https://amaranth-lang.org/amaranth/latest/install.html).
+Minerva requires Python 3.6+ and [Amaranth][2]. Installation instructions for Amaranth can be found [here](https://amaranth-lang.org/docs/amaranth/latest/install.html).
 
     python setup.py install
     python cli.py generate > minerva.v
