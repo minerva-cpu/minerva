@@ -8,7 +8,7 @@ setup(
     author="Jean-François Nguyen",
     author_email="jf@lambdaconcept.com",
     license="BSD",
-    python_requires="~=3.6",
+    python_requires=">=3.6",
     install_requires=["amaranth>=0.2,<0.5"],
     extras_require={ "debug": ["jtagtap"] },
     packages=find_packages(),
