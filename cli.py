@@ -1,6 +1,6 @@
 import argparse
 import warnings
-from nmigen import cli
+from amaranth import cli
 
 from minerva.core import Minerva
 
