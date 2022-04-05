@@ -1,7 +1,7 @@
 from amaranth import *
-from amaranth.test.utils import *
 from amaranth.asserts import *
 
+from .utils import FormalTestCase
 from ..cache import L1Cache
 
 
@@ -85,8 +85,7 @@ class L1CacheSpec(Elaboratable):
         return m
 
 
-# FIXME: FHDLTestCase is internal to nMigen, we shouldn't use it.
-class L1CacheTestCase(FHDLTestCase):
+class L1CacheTestCase(FormalTestCase):
     def check(self, cache):
         self.assertFormal(L1CacheSpec(cache), mode="bmc", depth=12)
 
