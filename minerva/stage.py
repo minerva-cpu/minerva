@@ -8,37 +8,39 @@ from amaranth.hdl.rec import *
 __all__ = ["Stage"]
 
 
-def _make_m2s(layout):
-    r = []
-    for f in layout:
-        if isinstance(f[1], (int, tuple)):
-            r.append((f[0], f[1], DIR_FANOUT))
+def _force_fanout(layout):
+    fields = []
+    for name, shape, dir in Layout.cast(layout):
+        if isinstance(shape, int):
+            shape = Shape(shape)
+        if isinstance(shape, Shape):
+            fields.append((name, shape, DIR_FANOUT))
         else:
-            r.append((f[0], _make_m2s(f[1])))
-    return r
+            fields.append((name, _force_fanout(shape)))
+    return Layout(fields)
 
 
 class _EndpointDescription:
     def __init__(self, payload_layout):
-        self.payload_layout = payload_layout
+        self.payload_layout = Layout.cast(payload_layout)
 
     def get_full_layout(self):
         reserved = {"valid", "stall", "kill"}
         attributed = set()
-        for f in self.payload_layout:
-            if f[0] in attributed:
-                raise ValueError(f[0] + " already attributed in payload layout")
-            if f[0] in reserved:
-                raise ValueError(f[0] + " cannot be used in endpoint layout")
-            attributed.add(f[0])
+        for name, shape, dir in self.payload_layout:
+            if name in attributed:
+                raise ValueError(name + " already attributed in payload layout")
+            if name in reserved:
+                raise ValueError(name + " cannot be used in endpoint layout")
+            attributed.add(name)
 
         full_layout = [
-            ("valid", 1, DIR_FANOUT),
-            ("stall", 1, DIR_FANIN),
-            ("kill",  1, DIR_FANOUT),
-            ("payload", _make_m2s(self.payload_layout))
+            ("valid",   1, DIR_FANOUT),
+            ("stall",   1, DIR_FANIN),
+            ("kill",    1, DIR_FANOUT),
+            ("payload", _force_fanout(self.payload_layout))
         ]
-        return full_layout
+        return Layout(full_layout)
 
 
 class _Endpoint(Record):
