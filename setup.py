@@ -8,8 +8,8 @@ setup(
     author="Jean-François Nguyen",
     author_email="jf@jfng.fr",
     license="BSD",
-    python_requires=">=3.6",
-    install_requires=["amaranth>=0.2,<0.5"],
+    python_requires=">=3.7",
+    install_requires=["amaranth>=0.3,<0.5"],
     extras_require={ "debug": ["jtagtap"] },
     packages=find_packages(),
     project_urls={
