@@ -1,4 +1,5 @@
-Copyright (C) 2018-2019 LambdaConcept
+Copyright (C) Jean-François Nguyen <jf@jfng.fr>
+Copyright (C) 2018-2021 LambdaConcept
 
 Redistribution and use in source and binary forms, with or without modification,
 are permitted provided that the following conditions are met:
