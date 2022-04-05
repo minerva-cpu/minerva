@@ -8,7 +8,7 @@ class BranchPredictor(Elaboratable):
     def __init__(self):
         self.d_branch = Signal()
         self.d_jump = Signal()
-        self.d_offset = Signal((32, True))
+        self.d_offset = Signal(signed(32))
         self.d_pc = Signal(32)
         self.d_rs1_re = Signal()
 

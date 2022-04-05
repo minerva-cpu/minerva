@@ -31,7 +31,7 @@ class InstructionDecoder(Elaboratable):
         self.rs1_re = Signal()
         self.rs2 = Signal(5)
         self.rs2_re = Signal()
-        self.immediate = Signal((32, True))
+        self.immediate = Signal(signed(32))
         self.bypass_x = Signal()
         self.bypass_m = Signal()
         self.load = Signal()
@@ -67,11 +67,11 @@ class InstructionDecoder(Elaboratable):
         funct7 = Signal(7)
         funct12 = Signal(12)
 
-        iimm12 = Signal((12, True))
-        simm12 = Signal((12, True))
-        bimm12 = Signal((13, True))
+        iimm12 = Signal(signed(12))
+        simm12 = Signal(signed(12))
+        bimm12 = Signal(signed(13))
         uimm20 = Signal(20)
-        jimm20 = Signal((21, True))
+        jimm20 = Signal(signed(21))
 
         insn = self.instruction
         fmt = Signal(range(Type.J + 1))

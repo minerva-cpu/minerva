@@ -22,7 +22,7 @@ class DataSelector(Elaboratable):
         self.x_misaligned = Signal()
         self.x_mask = Signal(4)
         self.x_store_data = Signal(32)
-        self.w_load_result = Signal((32, True))
+        self.w_load_result = Signal(signed(32))
 
     def elaborate(self, platform):
         m = Module()
@@ -49,8 +49,8 @@ class DataSelector(Elaboratable):
             with m.Case(Funct3.W):
                 m.d.comb += self.x_store_data.eq(self.x_store_operand)
 
-        w_byte = Signal((8, True))
-        w_half = Signal((16, True))
+        w_byte = Signal(signed(8))
+        w_half = Signal(signed(16))
 
         m.d.comb += [
             w_byte.eq(self.w_load_data.word_select(self.w_offset, 8)),
