@@ -5,7 +5,6 @@ from amaranth import *
 from amaranth.hdl.rec import *
 
 from ..isa import *
-from ..wishbone import *
 
 
 __all__ = ["rvfi_layout", "RVFIController"]

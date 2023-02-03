@@ -4,7 +4,7 @@ from itertools import tee
 
 from amaranth import *
 from amaranth.lib.coding import PriorityEncoder
-
+from amaranth_soc import wishbone
 from .isa import *
 from .stage import *
 from .csr import *
@@ -26,7 +26,6 @@ from .units.shifter import *
 from .units.trigger import *
 
 from .units.debug.jtag import jtag_layout
-from .wishbone import wishbone_layout, WishboneArbiter
 
 
 __all__ = ["Minerva"]
@@ -160,8 +159,8 @@ class Minerva(Elaboratable):
         self.timer_interrupt    = Signal()
         self.software_interrupt = Signal()
 
-        self.ibus = Record(wishbone_layout)
-        self.dbus = Record(wishbone_layout)
+        self.ibus = wishbone.Interface(addr_width=30, data_width=32, granularity=8, features={"cti", "bte", "err"}, name="ibus")
+        self.dbus = wishbone.Interface(addr_width=30, data_width=32, granularity=8, features={"cti", "bte", "err"}, name="dbus")
 
         if with_debug:
             self.jtag = Record(jtag_layout)
@@ -238,7 +237,7 @@ class Minerva(Elaboratable):
 
         if with_debug:
             self._debug        = DebugUnit()
-            self._dbus_arbiter = WishboneArbiter()
+            self._dbus_arbiter = wishbone.Arbiter(addr_width=30, data_width=32, granularity=8, features={"cti", "bte", "err"})
         else:
             self._debug        = None
             self._dbus_arbiter = None
@@ -529,8 +528,10 @@ class Minerva(Elaboratable):
             s.kill_on(self._x.sink.fence_i & self._x.valid)
 
         if self.with_debug:
-            debug_dbus_port     = self._dbus_arbiter.port(priority=0)
-            loadstore_dbus_port = self._dbus_arbiter.port(priority=1)
+            debug_dbus_port     = wishbone.Interface(addr_width=30, data_width=32, granularity=8, features={"cti", "bte", "err"}, name="debug_dbus_port")
+            self._dbus_arbiter.add(debug_dbus_port)
+            loadstore_dbus_port = wishbone.Interface(addr_width=30, data_width=32, granularity=8, features={"cti", "bte", "err"}, name="loadstore_dbus_port")
+            self._dbus_arbiter.add(loadstore_dbus_port)
             cpu.d.comb += [
                 self._loadstore.dbus  .connect(loadstore_dbus_port),
                 self._debug.dbus      .connect(debug_dbus_port),
