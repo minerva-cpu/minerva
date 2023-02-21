@@ -20,8 +20,8 @@ class CSR(Record):
         offset = 0
         for fname, shape, access in description:
             if isinstance(shape, int):
-                shape = shape, False
-            width, signed = shape
+                shape = unsigned(shape)
+            width = shape.width
             fields.append((fname, shape))
             if access is CSRAccess.RW:
                 mask |= ((1 << width) - 1) << offset
