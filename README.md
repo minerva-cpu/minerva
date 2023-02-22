@@ -71,7 +71,7 @@ The following parameters can be used to configure the Minerva core.
 
 ### Testing
 
-A riscv-formal testbench for Minerva is available [here](https://github.com/jfng/riscv-formal/tree/minerva/cores/minerva).
+A riscv-formal testbench for Minerva is available [here](https://github.com/minerva-cpu/riscv-formal/tree/minerva/cores/minerva).
 
 ### Possible improvements
 
