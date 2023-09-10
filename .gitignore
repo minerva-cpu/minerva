@@ -1,7 +1,15 @@
 # Python
 __pycache__/
+__pypackages__/
+dist/
 /*.egg-info
 /.eggs
+
+# pdm
+/.pdm-plugins
+/.pdm-python
+/.venv
+/pdm.lock
 
 # tests
 tests/spec_*/

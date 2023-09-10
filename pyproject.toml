@@ -1,0 +1,32 @@
+[project]
+dynamic = ["version"]
+
+name = "minerva"
+description = "A 32-bit RISC-V soft processor"
+authors = [{name = "Jean-François Nguyen", email = "jf@jfng.fr"}]
+license = {file = "LICENSE.txt"}
+
+requires-python = "~=3.8"
+dependencies = [
+    "amaranth[builtin-yosys]>=0.3,<0.5",
+    "yowasp-yosys",
+]
+
+[project.optional-dependencies]
+debug = ["jtagtap"]
+
+[project.urls]
+"Source Code" = "https://github.com/minerva-cpu/minerva"
+"Bug Tracker" = "https://github.com/minerva-cpu/minerva/issues"
+
+[build-system]
+requires = ["wheel", "setuptools>=67.0", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools_scm]
+local_scheme = "node-and-timestamp"
+
+[tool.pdm.scripts]
+_.env_file = ".env.toolchain"
+test.composite = ["test-code"]
+test-code.cmd = "python -m unittest discover -t . -s tests -v"

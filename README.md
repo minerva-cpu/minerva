@@ -2,24 +2,15 @@
 
 ## A 32-bit RISC-V soft processor
 
-Minerva is a CPU core that currently implements the [RISC-V][1] RV32IM instruction set. Its microarchitecture is described in plain Python code using the [Amaranth][2] toolbox.
+Minerva is a CPU core that currently implements the [RISC-V][1] RV32IM instruction set. Its microarchitecture is described in plain Python code using [Amaranth HDL][2].
 
 ### Quick start
 
-Minerva requires Python 3.7+ and [Amaranth][2]. Installation instructions for Amaranth can be found [here](https://amaranth-lang.org/docs/amaranth/latest/install.html).
+    pipx install pdm
+    pdm install
+    pdm run python cli.py generate minerva.v
 
-    python setup.py install
-    python cli.py generate > minerva.v
-
-To use Minerva in its minimal configuration, you need to wire the following ports to `minerva_cpu`:
-
-* `clk`
-* `rst`
-* `ibus__*`
-* `dbus__*`
-* `external_interrupt`
-* `timer_interrupt`
-* `software_interrupt`
+See `pdm run python cli.py -h` for more options.
 
 ### Features
 
@@ -53,13 +44,13 @@ The following parameters can be used to configure the Minerva core.
 | `reset_address`   | `0x00000000`   | Reset vector address                               |
 | `with_icache`     | `False`        | Enable the instruction cache                       |
 | `icache_nways`    | `1`            | Number of ways in the instruction cache            |
-| `icache_nlines`   | `128`          | Number of lines in the instruction cache           |
+| `icache_nlines`   | `32`           | Number of lines in the instruction cache           |
 | `icache_nwords`   | `4`            | Number of words in a line of the instruction cache |
 | `icache_base`     | `0x00000000`   | Base of the instruction cache address space        |
 | `icache_limit`    | `0x80000000`   | Limit of the instruction cache address space       |
 | `with_dcache`     | `False`        | Enable the data cache                              |
 | `dcache_nways`    | `1`            | Number of ways in the data cache                   |
-| `dcache_nlines`   | `128`          | Number of lines in the data cache                  |
+| `dcache_nlines`   | `32`           | Number of lines in the data cache                  |
 | `dcache_nwords`   | `4`            | Number of words in a line of the data cache        |
 | `dcache_base`     | `0x00000000`   | Base of the data cache address space               |
 | `dcache_limit`    | `0x80000000`   | Limit of the data cache address space              |
