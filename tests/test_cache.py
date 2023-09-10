@@ -1,8 +1,8 @@
 from amaranth import *
 from amaranth.asserts import *
 
-from .utils import FormalTestCase
-from ..cache import L1Cache
+from minerva.test.utils import FormalTestCase
+from minerva.cache import L1Cache
 
 
 class L1CacheSpec(Elaboratable):

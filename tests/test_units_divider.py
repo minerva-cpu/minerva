@@ -1,10 +1,10 @@
 import unittest
 
 from amaranth import *
-from amaranth.back.pysim import *
+from amaranth.sim import *
 
-from ..units.divider import *
-from ..isa import Funct3
+from minerva.units.divider import *
+from minerva.isa import Funct3
 
 
 def test_op(funct3, src1, src2, result):

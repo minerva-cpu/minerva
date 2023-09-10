@@ -3,8 +3,8 @@ import unittest
 from amaranth import *
 from amaranth.sim import *
 
-from ..units.multiplier import *
-from ..isa import Funct3
+from minerva.units.multiplier import Multiplier
+from minerva.isa import Funct3
 
 
 def test_op(funct3, src1, src2, result):
@@ -24,7 +24,7 @@ def test_op(funct3, src1, src2, result):
             self.assertEqual((yield self.dut.w_result), result)
         sim.add_clock(1e-6)
         sim.add_sync_process(process)
-        with sim.write_vcd("dump.vcd"):
+        with sim.write_vcd(vcd_file=open("dump.vcd", "w")):
             sim.run()
     return test
 
