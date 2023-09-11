@@ -1,3 +1,6 @@
+[tool.pdm.version]
+source = "scm"
+
 [project]
 dynamic = ["version"]
 
@@ -20,11 +23,8 @@ debug = ["jtagtap"]
 "Bug Tracker" = "https://github.com/minerva-cpu/minerva/issues"
 
 [build-system]
-requires = ["wheel", "setuptools>=67.0", "setuptools_scm[toml]>=6.2"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools_scm]
-local_scheme = "node-and-timestamp"
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
 
 [tool.pdm.scripts]
 _.env_file = ".env.toolchain"
