@@ -182,7 +182,7 @@ class L1Cache(Elaboratable):
             m.d.comb += [
                 dat_mem_wp.addr.eq(self.bus_addr.line),
                 dat_mem_wp.en.bit_select(self.bus_addr.offset, 1).eq(way.bus_re & self.bus_valid),
-                dat_mem_wp.data.eq(Repl(self.bus_rdata, self.nwords)),
+                dat_mem_wp.data.eq(self.bus_rdata.replicate(self.nwords)),
             ]
 
         return m
