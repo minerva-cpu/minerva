@@ -31,7 +31,7 @@ class Shifter(Elaboratable):
         with m.If(~self.x_stall):
             m.d.sync += [
                 m_direction.eq(self.x_direction),
-                m_result.eq(Cat(x_operand, Repl(x_filler, 32)) >> self.x_shamt)
+                m_result.eq(Cat(x_operand, x_filler.replicate(32)) >> self.x_shamt)
             ]
 
         m.d.comb += self.m_result.eq(Mux(m_direction, m_result, m_result[::-1]))
