@@ -1,8 +1,8 @@
 from amaranth import *
 from amaranth.utils import log2_int
+from amaranth_soc import wishbone
 
 from ..cache import *
-from ..wishbone import *
 
 
 __all__ = ["PCSelector", "FetchUnitInterface", "BareFetchUnit", "CachedFetchUnit"]
@@ -63,7 +63,7 @@ class PCSelector(Elaboratable):
 
 class FetchUnitInterface:
     def __init__(self):
-        self.ibus = Record(wishbone_layout)
+        self.ibus = wishbone.Interface(addr_width=30, data_width=32, granularity=8, features={"cti", "bte", "err"}, name="fetch_unit_ibus")
 
         self.a_pc = Signal(32)
         self.a_stall = Signal()
@@ -187,23 +187,25 @@ class CachedFetchUnit(FetchUnitInterface, Elaboratable):
             self._icache.s2_valid.eq(self.f_valid),
         ]
 
-        ibus_arbiter = m.submodules.ibus_arbiter = WishboneArbiter()
+        ibus_arbiter = m.submodules.ibus_arbiter = wishbone.Arbiter(addr_width=30, data_width=32, granularity=8, features={"cti", "bte", "err"})
         m.d.comb += ibus_arbiter.bus.connect(self.ibus)
 
-        icache_port = ibus_arbiter.port(priority=0)
+        icache_port = wishbone.Interface(addr_width=30, data_width=32, granularity=8, features={"cti", "bte", "err"}, name="icache_port")
+        ibus_arbiter.add(icache_port)
         m.d.comb += [
             icache_port.cyc.eq(self._icache.bus_re),
             icache_port.stb.eq(self._icache.bus_re),
             icache_port.adr.eq(self._icache.bus_addr),
             icache_port.sel.eq(0b1111),
-            icache_port.cti.eq(Mux(self._icache.bus_last, Cycle.END, Cycle.INCREMENT)),
+            icache_port.cti.eq(Mux(self._icache.bus_last, wishbone.CycleType.END_OF_BURST, wishbone.CycleType.INCR_BURST)),
             icache_port.bte.eq(Const(log2_int(self._icache.nwords) - 1)),
             self._icache.bus_valid.eq(icache_port.ack),
             self._icache.bus_error.eq(icache_port.err),
             self._icache.bus_rdata.eq(icache_port.dat_r)
         ]
 
-        bare_port = ibus_arbiter.port(priority=1)
+        bare_port = wishbone.Interface(addr_width=30, data_width=32, granularity=8, features={"cti", "bte", "err"}, name="bare_port")
+        ibus_arbiter.add(bare_port)
         bare_rdata = Signal.like(bare_port.dat_r)
         with m.If(bare_port.cyc):
             with m.If(bare_port.ack | bare_port.err | ~self.f_valid):

@@ -1,10 +1,10 @@
 from amaranth import *
 from amaranth.utils import log2_int
 from amaranth.lib.fifo import SyncFIFOBuffered
+from amaranth_soc import wishbone
 
 from ..cache import *
 from ..isa import Funct3
-from ..wishbone import *
 
 
 __all__ = ["DataSelector", "LoadStoreUnitInterface", "BareLoadStoreUnit", "CachedLoadStoreUnit"]
@@ -74,7 +74,7 @@ class DataSelector(Elaboratable):
 
 class LoadStoreUnitInterface:
     def __init__(self):
-        self.dbus = Record(wishbone_layout)
+        self.dbus = wishbone.Interface(addr_width=30, data_width=32, granularity=8, features={"cti", "bte", "err"}, name="load_store_dbus")
 
         self.x_addr = Signal(32)
         self.x_mask = Signal(4)
@@ -252,10 +252,11 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
             self._wrbuf.w.op.data.eq(self.x_store_data),
         ]
 
-        dbus_arbiter = m.submodules.dbus_arbiter = WishboneArbiter()
+        dbus_arbiter = m.submodules.dbus_arbiter = wishbone.Arbiter(addr_width=30, data_width=32, granularity=8, features={"cti", "bte", "err"})
         m.d.comb += dbus_arbiter.bus.connect(self.dbus)
 
-        wrbuf_port = dbus_arbiter.port(priority=0)
+        wrbuf_port = wishbone.Interface(addr_width=30, data_width=32, granularity=8, features={"cti", "bte", "err"}, name="wrbuf_port")
+        dbus_arbiter.add(wrbuf_port)
         m.d.comb += [
             wrbuf_port.cyc.eq(self._wrbuf.r.rdy),
             wrbuf_port.we.eq(Const(1)),
@@ -272,20 +273,22 @@ class CachedLoadStoreUnit(LoadStoreUnitInterface, Elaboratable):
                 wrbuf_port.dat_w.eq(self._wrbuf.r.op.data),
             ]
 
-        dcache_port = dbus_arbiter.port(priority=1)
+        dcache_port = wishbone.Interface(addr_width=30, data_width=32, granularity=8, features={"cti", "bte", "err"}, name="dcache_port")
+        dbus_arbiter.add(dcache_port)
         m.d.comb += [
             dcache_port.cyc.eq(self._dcache.bus_re),
             dcache_port.stb.eq(self._dcache.bus_re),
             dcache_port.adr.eq(self._dcache.bus_addr),
             dcache_port.sel.eq(0b1111),
-            dcache_port.cti.eq(Mux(self._dcache.bus_last, Cycle.END, Cycle.INCREMENT)),
+            dcache_port.cti.eq(Mux(self._dcache.bus_last, wishbone.CycleType.END_OF_BURST, wishbone.CycleType.INCR_BURST)),
             dcache_port.bte.eq(Const(log2_int(self._dcache.nwords) - 1)),
             self._dcache.bus_valid.eq(dcache_port.ack),
             self._dcache.bus_error.eq(dcache_port.err),
             self._dcache.bus_rdata.eq(dcache_port.dat_r)
         ]
 
-        bare_port = dbus_arbiter.port(priority=2)
+        bare_port = wishbone.Interface(addr_width=30, data_width=32, granularity=8, features={"cti", "bte", "err"}, name="bare_port")
+        dbus_arbiter.add(bare_port)
         bare_rdata = Signal.like(bare_port.dat_r)
         with m.If(bare_port.cyc):
             with m.If(bare_port.ack | bare_port.err | ~self.m_valid):

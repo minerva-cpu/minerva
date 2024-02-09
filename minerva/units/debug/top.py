@@ -1,10 +1,10 @@
 from amaranth import *
 from amaranth.hdl.rec import *
+from amaranth_soc import wishbone
 
 
 from ...csr import *
 from ...isa import *
-from ...wishbone import wishbone_layout
 from .controller import *
 from .jtag import *
 from .regfile import *
@@ -24,7 +24,7 @@ jtag_regs = {
 class DebugUnit(Elaboratable, AutoCSR):
     def __init__(self):
         self.jtag = Record(jtag_layout)
-        self.dbus = Record(wishbone_layout)
+        self.dbus = wishbone.Interface(addr_width=30, data_width=32, granularity=8, features={"cti", "bte", "err"}, name="debug_dbus")
 
         self.trigger_haltreq = Signal()
 

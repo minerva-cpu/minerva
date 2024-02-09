@@ -4,7 +4,6 @@ from operator import or_
 from amaranth import *
 from amaranth.hdl.rec import *
 
-from ...wishbone import wishbone_layout
 from .dmi import *
 
 
