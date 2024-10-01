@@ -180,9 +180,9 @@ class Register(wiring.Component):
 
             if field.port.access != FieldPort.Access.WPRI:
                 m.d.comb += [
-                    self.x_rp_data[field_slice].eq(Value.cast(field.port.x_rp_data)[field_slice]),
-                    Value.cast(field.port.m_wp_data)[field_slice].eq(self.m_wp_data[field_slice]),
-                    Value.cast(field.port.w_wp_data)[field_slice].eq(self.w_wp_data[field_slice]),
+                    self.x_rp_data[field_slice].eq(field.port.x_rp_data),
+                    field.port.m_wp_data.eq(self.m_wp_data[field_slice]),
+                    field.port.w_wp_data.eq(self.w_wp_data[field_slice]),
                     field.port.w_wp_en.eq(self.w_wp_en),
                 ]
                 m_wp_rdy_any |= field.port.m_wp_rdy
