@@ -102,7 +102,7 @@ class BareLoadStoreUnit(wiring.Component):
         m = Module()
 
         with m.If(self.dbus.cyc):
-            with m.If(self.dbus.ack | self.dbus.err | ~self.m_valid):
+            with m.If(self.dbus.ack | self.dbus.err):
                 m.d.sync += [
                     self.dbus.cyc.eq(0),
                     self.dbus.stb.eq(0),
@@ -309,7 +309,7 @@ class CachedLoadStoreUnit(wiring.Component):
         bare_port = dbus_arbiter.port(priority=2)
         bare_rdata = Signal.like(bare_port.dat_r)
         with m.If(bare_port.cyc):
-            with m.If(bare_port.ack | bare_port.err | ~self.m_valid):
+            with m.If(bare_port.ack | bare_port.err):
                 m.d.sync += [
                     bare_port.cyc.eq(0),
                     bare_port.stb.eq(0),

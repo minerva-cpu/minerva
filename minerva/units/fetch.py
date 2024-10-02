@@ -92,7 +92,7 @@ class BareFetchUnit(wiring.Component):
 
         ibus_rdata = Signal.like(self.ibus.dat_r)
         with m.If(self.ibus.cyc):
-            with m.If(self.ibus.ack | self.ibus.err | ~self.f_valid):
+            with m.If(self.ibus.ack | self.ibus.err):
                 m.d.sync += [
                     self.ibus.cyc.eq(0),
                     self.ibus.stb.eq(0),
@@ -225,7 +225,7 @@ class CachedFetchUnit(wiring.Component):
         bare_port = ibus_arbiter.port(priority=1)
         bare_rdata = Signal.like(bare_port.dat_r)
         with m.If(bare_port.cyc):
-            with m.If(bare_port.ack | bare_port.err | ~self.f_valid):
+            with m.If(bare_port.ack | bare_port.err):
                 m.d.sync += [
                     bare_port.cyc.eq(0),
                     bare_port.stb.eq(0),

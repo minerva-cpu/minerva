@@ -305,8 +305,8 @@ class Minerva(wiring.Component):
 
         connect(m, self._fetch.ibus, flipped(self.ibus))
 
-        self._m.stall_on(self._fetch.a_busy & self._a.valid)
-        self._m.stall_on(self._fetch.f_busy & self._f.valid)
+        self._m.stall_on(self._fetch.a_busy)
+        self._m.stall_on(self._fetch.f_busy)
 
         if self._with_icache:
             flush_icache = self._x.sink.p.fence_i & self._x.valid
@@ -494,8 +494,8 @@ class Minerva(wiring.Component):
             self._loadstore.m_valid     .eq(self._m.valid)
         ]
 
-        self._m.stall_on(self._loadstore.x_busy & self._x.valid)
-        self._m.stall_on(self._loadstore.m_busy & self._m.valid)
+        self._m.stall_on(self._loadstore.x_busy)
+        self._m.stall_on(self._loadstore.m_busy)
 
         if self._with_dcache:
             m.d.comb += [
