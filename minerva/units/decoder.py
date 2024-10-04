@@ -35,6 +35,7 @@ class InstructionDecoder(wiring.Component):
     load:        Out(1)
     store:       Out(1)
     fence_i:     Out(1)
+    fence:       Out(1)
     adder:       Out(1)
     adder_sub:   Out(1)
     logic:       Out(1)
@@ -57,6 +58,7 @@ class InstructionDecoder(wiring.Component):
     ecall:       Out(1)
     ebreak:      Out(1)
     mret:        Out(1)
+    wfi:         Out(1)
     funct3:      Out(3)
     illegal:     Out(1)
 
@@ -136,7 +138,7 @@ class InstructionDecoder(wiring.Component):
             self.rs2.eq(insn[20:25]),
 
             self.rd_we.eq(reduce(or_, (fmt == T for T in (Type.R, Type.I, Type.U, Type.J))) &
-                          ~self.fence_i),
+                          ~(self.fence_i | self.fence)),
             self.rs1_re.eq(reduce(or_, (fmt == T for T in (Type.R, Type.I, Type.S, Type.B)))),
             self.rs2_re.eq(reduce(or_, (fmt == T for T in (Type.R, Type.S, Type.B)))),
 
@@ -238,6 +240,9 @@ class InstructionDecoder(wiring.Component):
             self.fence_i.eq(matcher([
                 (Opcode.MISC_MEM, Funct3.FENCEI) # fence.i
             ])),
+            self.fence.eq(matcher([
+                (Opcode.MISC_MEM, Funct3.FENCE)  # fence
+            ])),
 
             self.csr.eq(matcher([
                 (Opcode.SYSTEM, Funct3.CSRRW),  # csrrw
@@ -256,6 +261,7 @@ class InstructionDecoder(wiring.Component):
             self.ecall.eq(self.privileged & (funct12 == Funct12.ECALL)),
             self.ebreak.eq(self.privileged & (funct12 == Funct12.EBREAK)),
             self.mret.eq(self.privileged & (funct12 == Funct12.MRET)),
+            self.wfi.eq(self.privileged & (funct12 == Funct12.WFI)),
 
             self.bypass_x.eq(self.adder | self.logic | self.lui | self.auipc | self.csr),
             self.bypass_m.eq(self.compare | self.divide | self.shift),
@@ -263,7 +269,7 @@ class InstructionDecoder(wiring.Component):
             self.illegal.eq((self.instruction[:2] != 0b11) | ~reduce(or_, (
                 self.compare, self.branch, self.adder, self.logic, self.multiply, self.divide, self.shift,
                 self.lui, self.auipc, self.jump, self.load, self.store,
-                self.csr, self.ecall, self.ebreak, self.mret, self.fence_i,
+                self.csr, self.ecall, self.ebreak, self.mret, self.wfi, self.fence_i, self.fence,
             )))
         ]
 
