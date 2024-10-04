@@ -10,7 +10,7 @@ __all__ = ["ExceptionUnit"]
 
 
 class MSTATUS(csr.Register):
-    class Mode(enum.IntEnum, shape=2):
+    class Mode(enum.Enum, shape=2):
         USER       = 0
         SUPERVISOR = 1
         MACHINE    = 3
@@ -132,7 +132,7 @@ class MEPC(csr.Register):
 
 
 class MCAUSE(csr.Register):
-    class Code(enum.Enum, shape=32):
+    class Code(enum.IntEnum, shape=32):
         # interrupts
         S_SOFTWARE_INTERRUPT  = (1 << 31) |  1
         M_SOFTWARE_INTERRUPT  = (1 << 31) |  3
@@ -140,7 +140,23 @@ class MCAUSE(csr.Register):
         M_TIMER_INTERRUPT     = (1 << 31) |  7
         S_EXTERNAL_INTERRUPT  = (1 << 31) |  9
         M_EXTERNAL_INTERRUPT  = (1 << 31) | 11
-        M_FAST_INTERRUPT      = (1 << 31) | 18 # custom
+        # interrupts (custom)
+        M_FAST_INTERRUPT_0    = (1 << 31) | 16
+        M_FAST_INTERRUPT_1    = (1 << 31) | 17
+        M_FAST_INTERRUPT_2    = (1 << 31) | 18
+        M_FAST_INTERRUPT_3    = (1 << 31) | 19
+        M_FAST_INTERRUPT_4    = (1 << 31) | 20
+        M_FAST_INTERRUPT_5    = (1 << 31) | 21
+        M_FAST_INTERRUPT_6    = (1 << 31) | 22
+        M_FAST_INTERRUPT_7    = (1 << 31) | 23
+        M_FAST_INTERRUPT_8    = (1 << 31) | 24
+        M_FAST_INTERRUPT_9    = (1 << 31) | 25
+        M_FAST_INTERRUPT_10   = (1 << 31) | 26
+        M_FAST_INTERRUPT_11   = (1 << 31) | 27
+        M_FAST_INTERRUPT_12   = (1 << 31) | 28
+        M_FAST_INTERRUPT_13   = (1 << 31) | 29
+        M_FAST_INTERRUPT_14   = (1 << 31) | 30
+        M_FAST_INTERRUPT_15   = (1 << 31) | 31
         # exceptions
         FETCH_MISALIGNED      =  0
         FETCH_ACCESS_FAULT    =  1
@@ -257,7 +273,7 @@ class ExceptionUnit(wiring.Component):
                 "m_software":       1,
                 "m_timer":          1,
                 "m_external":       1,
-                "m_fast":           1,
+                "m_fast":          16,
             }),
             "e": StructLayout({
                 "fetch_misaligned": 1,
@@ -278,7 +294,7 @@ class ExceptionUnit(wiring.Component):
                 m_trap_req.i.m_software.eq(m_mie.msie & m_mip.msip),
                 m_trap_req.i.m_timer   .eq(m_mie.mtie & m_mip.mtip),
                 m_trap_req.i.m_external.eq(m_mie.meie & m_mip.meip),
-                m_trap_req.i.m_fast    .eq((m_mie.mfie & m_mip.mfip).any()),
+                m_trap_req.i.m_fast    .eq(m_mie.mfie & m_mip.mfip),
             ]
 
         m.d.comb += [
@@ -302,6 +318,8 @@ class ExceptionUnit(wiring.Component):
         m_mcause_mux |= Mux(m_trap_gnt.i.m_software,       MCAUSE.Code.M_SOFTWARE_INTERRUPT, 0)
         m_mcause_mux |= Mux(m_trap_gnt.i.m_timer,          MCAUSE.Code.M_TIMER_INTERRUPT,    0)
         m_mcause_mux |= Mux(m_trap_gnt.i.m_external,       MCAUSE.Code.M_EXTERNAL_INTERRUPT, 0)
+        for j in range(16):
+            m_mcause_mux |= Mux(m_trap_gnt.i.m_fast[j],    MCAUSE.Code.M_FAST_INTERRUPT_0+j, 0)
         m_mcause_mux |= Mux(m_trap_gnt.e.fetch_misaligned, MCAUSE.Code.FETCH_MISALIGNED,     0)
         m_mcause_mux |= Mux(m_trap_gnt.e.fetch_error,      MCAUSE.Code.FETCH_ACCESS_FAULT,   0)
         m_mcause_mux |= Mux(m_trap_gnt.e.illegal,          MCAUSE.Code.ILLEGAL_INSTRUCTION,  0)
