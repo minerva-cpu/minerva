@@ -111,7 +111,6 @@ _xm_layout = StructLayout({
     "csr_we":                1,
     "csr_result":           32,
     "mret":                  1,
-    "exception":             1
 })
 
 
@@ -127,7 +126,7 @@ _mw_layout = StructLayout({
     "csr_rdy":     1,
     "csr_result": 32,
     "multiply":    1,
-    "exception":   1
+    "trap":        1
 })
 
 
@@ -356,7 +355,7 @@ class Minerva(wiring.Component):
             self._csrf.m_ready  .eq(self._m.ready),
             self._csrf.w_wp_data.eq(self._w.sink.p.csr_result),
             self._csrf.w_wp_en  .eq(self._w.sink.p.csr_we & self._w.sink.p.csr_rdy &
-                                    self._w.valid),
+                                    self._w.valid & ~self._w.sink.p.trap),
         ]
 
         self._d.stall_on(self._decoder.csr & self._d.valid & (self._x.valid |
@@ -365,7 +364,7 @@ class Minerva(wiring.Component):
 
         self._d.stall_on(self._x.sink.p.csr_we & self._x.valid |
                          self._m.sink.p.csr_we & self._m.valid & ~self._exception.m_trap |
-                         self._w.sink.p.csr_we & self._w.valid)
+                         self._w.sink.p.csr_we & self._w.valid & ~self._w.sink.p.trap)
 
         x_csr_sc_logic_op   = Signal(3)
         x_csr_sc_logic_src1 = Signal(32)
@@ -471,8 +470,6 @@ class Minerva(wiring.Component):
             self._exception.w_valid             .eq(self._w.valid),
         ]
 
-        self._w.kill_on(self._w.sink.p.exception)
-
         m.d.comb += [
             self._data_sel.x_offset       .eq(self._adder.x_result[:2]),
             self._data_sel.x_funct3       .eq(self._x.sink.p.funct3),
@@ -562,8 +559,7 @@ class Minerva(wiring.Component):
             self._gprf.m_wp_data.eq(m_result),
 
             self._gprf.w_wp_addr.eq(self._w.sink.p.rd),
-            self._gprf.w_wp_en  .eq(self._w.sink.p.rd_we & ~self._w.sink.p.exception &
-                                    self._w.valid),
+            self._gprf.w_wp_en  .eq(self._w.sink.p.rd_we & self._w.valid & ~self._w.sink.p.trap),
             self._gprf.w_wp_data.eq(w_result),
         ]
 
@@ -791,7 +787,7 @@ class Minerva(wiring.Component):
                 self._m.source.p.csr_we    .eq(self._m.sink.p.csr_we),
                 self._m.source.p.csr_rdy   .eq(self._csrf.m_wp_rdy),
                 self._m.source.p.csr_result.eq(self._m.sink.p.csr_result),
-                self._m.source.p.exception .eq(self._exception.m_trap)
+                self._m.source.p.trap      .eq(self._exception.m_trap)
             ]
 
             if self._with_muldiv:
