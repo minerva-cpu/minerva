@@ -158,7 +158,7 @@ class L1Cache(wiring.Component):
                         way.tag_wp.data.eq(0),
                     ]
                 with m.If(flush_done):
-                    m.next = "CHECK"
+                    m.next = "DONE"
                 with m.Else():
                     m.d.sync += flush_line.eq(flush_line - 1)
 
@@ -169,7 +169,7 @@ class L1Cache(wiring.Component):
                         way.tag_wp.en  .eq(way_hit[i]),
                         way.tag_wp.data.eq(0),
                     ]
-                m.next = "CHECK"
+                m.next = "DONE"
 
             with m.State("REFILL"):
                 m.d.comb += [
@@ -188,9 +188,12 @@ class L1Cache(wiring.Component):
                     with m.If(self.bus_ack):
                         with m.If(self.bus_last):
                             m.d.sync += way_lru.eq(~way_lru)
-                            m.next = "CHECK"
+                            m.next = "DONE"
                         with m.Else():
                             m.d.sync += self.bus_addr.word.eq(self.bus_addr.word + 1)
+
+            with m.State("DONE"):
+                m.next = "CHECK"
 
         if platform == "formal":
             with m.If(Initial()):
