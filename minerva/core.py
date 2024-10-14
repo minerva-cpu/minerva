@@ -168,8 +168,6 @@ class Minerva(wiring.Component):
             "dbus": Out(wishbone.Signature(addr_width=30, data_width=32, granularity=8,
                                            features=("err", "cti", "bte"))),
         }
-        if with_rvfi:
-            members["rvfi"] = Out(RVFISignature())
 
         # Pipeline stages
 
@@ -223,15 +221,20 @@ class Minerva(wiring.Component):
                 self._multiplier = Multiplier()
                 self._divider    = Divider()
 
-        if with_rvfi:
-            self._rvficon = RVFIController()
-
         # Storage
 
         self._gprf = gpr.RegisterFile()
         self._csrf = csr.RegisterFile()
 
-        self._csrf.add("exception", self._exception.csr_bank, addr=0x300)
+        self._csrf.add(self._exception.csr_bank, addr=0x300)
+
+        # Verification
+
+        if with_rvfi:
+            self._rvficon = RVFIController(self._csrf.memory_map)
+            members.update({
+                "rvfi": Out(RVFISignature(self._csrf.memory_map))
+            })
 
         super().__init__(members)
 

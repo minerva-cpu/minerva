@@ -70,6 +70,14 @@ class FieldAction(wiring.Component):
             **members,
         })
 
+    @property
+    def w_rvfi_wmask(self):
+        return self.port.w_wp_en.replicate(Value.cast(self.port.w_wp_data).width)
+
+    @property
+    def w_rvfi_wdata(self):
+        return self.port.w_wp_data
+
 
 class Field:
     def __init__(self, action_cls, *args, **kwargs):
@@ -158,6 +166,18 @@ class Register(wiring.Component):
     @property
     def f(self):
         return self._field
+
+    @property
+    def x_rvfi_rdata(self):
+        return self.x_rp_data
+
+    @property
+    def w_rvfi_wmask(self):
+        return Cat(field.w_rvfi_wmask for field_name, field in self)
+
+    @property
+    def w_rvfi_wdata(self):
+        return Cat(field.w_rvfi_wdata for field_name, field in self)
 
     def __iter__(self):
         if isinstance(self._field, FieldAction):
@@ -308,13 +328,11 @@ class RegisterFile(wiring.Component):
         self._memory_map.freeze()
         return self._memory_map
 
-    def add(self, name, bank, *, addr):
-        if not (isinstance(name, str) and name):
-            raise TypeError(f"Bank name must be a non-empty string, not {name!r}")
+    def add(self, bank, *, addr):
         if not isinstance(bank, RegisterBank):
             raise TypeError(f"Bank must be an instance of RegisterBank, not {bank!r}")
 
-        self._memory_map.add_window(bank._memory_map, addr=addr, name=name)
+        self._memory_map.add_window(bank._memory_map, addr=addr, name=("bank", f"{addr:03x}"))
         self._banks[bank.memory_map] = bank
 
     def elaborate(self, platform):

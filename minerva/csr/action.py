@@ -34,6 +34,14 @@ class _WxRL(FieldAction):
     def init(self):
         return self._init
 
+    @property
+    def w_rvfi_wmask(self):
+        return (self.port.w_wp_en | self.w_en).replicate(Value.cast(self.port.w_wp_data).width)
+
+    @property
+    def w_rvfi_wdata(self):
+        return Mux(self.w_en, self.w_data, self.port.w_wp_data)
+
     def elaborate(self, platform):
         m = Module()
 
