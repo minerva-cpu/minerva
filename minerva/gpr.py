@@ -121,27 +121,22 @@ class RegisterFile(wiring.Component):
             self.d_rp2_rdy.eq(~bypass2.d_rp_raw | bypass2.d_rp_rdy),
         ]
 
-        m.submodules.mem1 = mem1 = Memory(shape=unsigned(32), depth=32, init=[0] * 32)
-        m.submodules.mem2 = mem2 = Memory(shape=unsigned(32), depth=32, init=[0] * 32)
+        m.submodules.mem = mem = Memory(shape=unsigned(32), depth=32, init=[0] * 32)
 
-        mem1_wp = mem1.write_port()
-        mem1_rp = mem1.read_port()
-        mem2_wp = mem2.write_port()
-        mem2_rp = mem2.read_port()
+        mem_wp  = mem.write_port()
+        mem_rp1 = mem.read_port()
+        mem_rp2 = mem.read_port()
 
         m.d.comb += [
-            mem1_rp.addr.eq(self.d_rp1_addr),
-            mem1_rp.en  .eq(self.d_ready),
-            mem2_rp.addr.eq(self.d_rp2_addr),
-            mem2_rp.en  .eq(self.d_ready),
-        ]
+            mem_wp.addr.eq(self.w_wp_addr),
+            mem_wp.en  .eq(self.w_wp_en),
+            mem_wp.data.eq(self.w_wp_data),
 
-        for mem_wp in (mem1_wp, mem2_wp):
-            m.d.comb += [
-                mem_wp.addr.eq(self.w_wp_addr),
-                mem_wp.en  .eq(self.w_wp_en),
-                mem_wp.data.eq(self.w_wp_data),
-            ]
+            mem_rp1.addr.eq(self.d_rp1_addr),
+            mem_rp1.en  .eq(self.d_ready),
+            mem_rp2.addr.eq(self.d_rp2_addr),
+            mem_rp2.en  .eq(self.d_ready),
+        ]
 
         x_bypass1_raw  = Signal()
         x_bypass1_data = Signal(32)
@@ -157,8 +152,8 @@ class RegisterFile(wiring.Component):
             ]
 
         m.d.comb += [
-            self.x_rp1_data.eq(Mux(x_bypass1_raw, x_bypass1_data, mem1_rp.data)),
-            self.x_rp2_data.eq(Mux(x_bypass2_raw, x_bypass2_data, mem2_rp.data)),
+            self.x_rp1_data.eq(Mux(x_bypass1_raw, x_bypass1_data, mem_rp1.data)),
+            self.x_rp2_data.eq(Mux(x_bypass2_raw, x_bypass2_data, mem_rp2.data)),
         ]
 
         return m
