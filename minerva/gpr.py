@@ -65,10 +65,8 @@ class RegisterBypass(wiring.Component):
 
 class RegisterFile(wiring.Component):
     d_rp1_addr: In(5)
-    d_rp1_en:   In(1)
     d_rp1_rdy:  Out(1)
     d_rp2_addr: In(5)
-    d_rp2_en:   In(1)
     d_rp2_rdy:  Out(1)
     d_ready:    In(1)
 

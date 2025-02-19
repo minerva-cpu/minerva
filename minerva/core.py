@@ -324,14 +324,12 @@ class Minerva(wiring.Component):
 
         m.d.comb += [
             self._gprf.d_rp1_addr.eq(self._decoder.rs1),
-            self._gprf.d_rp1_en  .eq(self._decoder.rs1_re),
             self._gprf.d_rp2_addr.eq(self._decoder.rs2),
-            self._gprf.d_rp2_en  .eq(self._decoder.rs2_re),
             self._gprf.d_ready   .eq(self._d.ready),
         ]
 
-        self._d.stall_on(((self._gprf.d_rp1_en & ~self._gprf.d_rp1_rdy) |
-                          (self._gprf.d_rp2_en & ~self._gprf.d_rp2_rdy)) & self._d.valid)
+        self._d.stall_on(((self._decoder.rs1_re & ~self._gprf.d_rp1_rdy) |
+                          (self._decoder.rs2_re & ~self._gprf.d_rp2_rdy)) & self._d.valid)
 
         x_src1 = Signal(32)
         x_src2 = Signal(32)
