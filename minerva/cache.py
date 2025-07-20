@@ -1,5 +1,4 @@
 from amaranth import *
-from amaranth.asserts import *
 from amaranth.lib import wiring
 from amaranth.lib.wiring import In, Out
 from amaranth.lib.data import StructLayout, ArrayLayout
