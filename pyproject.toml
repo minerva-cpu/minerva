@@ -9,7 +9,7 @@ description = "A 32-bit RISC-V soft processor"
 authors = [{name = "Jean-François Nguyen", email = "jf@jfng.fr"}]
 license = {file = "LICENSE.txt"}
 
-requires-python = "~=3.8"
+requires-python = "~=3.9"
 dependencies = [
     "amaranth[builtin-yosys]<0.6,>=0.5",
     "amaranth_soc @ git+https://github.com/amaranth-lang/amaranth-soc",
