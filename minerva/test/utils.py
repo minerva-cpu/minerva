@@ -44,7 +44,7 @@ class FormalTestCase(unittest.TestCase):
         smtbmc
 
         [script]
-        read_ilang top.il
+        read_rtlil top.il
         prep
         {script}
 
