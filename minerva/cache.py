@@ -133,7 +133,7 @@ class L1Cache(wiring.Component):
 
         m.d.comb += flush_done.eq(flush_line == 0)
 
-        with m.FSM() as fsm:
+        with m.FSM(init="FLUSH") as fsm:
             with m.State("CHECK"):
                 with m.If(self.s2_op.flush & self.s2_valid & ~flush_done):
                     m.next = "FLUSH"
@@ -196,6 +196,6 @@ class L1Cache(wiring.Component):
 
         if platform == "formal":
             with m.If(Initial()):
-                m.d.comb += Assume(fsm.ongoing("CHECK"))
+                m.d.comb += Assume(fsm.ongoing("FLUSH"))
 
         return m
