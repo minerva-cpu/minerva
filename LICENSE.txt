@@ -1,4 +1,4 @@
-Copyright (C) Jean-François Nguyen <jf@jfng.fr>
+Copyright (C) Mégane Nguyen <meg@megng.fr>
 Copyright (C) 2018-2021 LambdaConcept
 
 Redistribution and use in source and binary forms, with or without modification,

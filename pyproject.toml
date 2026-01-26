@@ -6,7 +6,7 @@ dynamic = ["version"]
 
 name = "minerva"
 description = "A 32-bit RISC-V soft processor"
-authors = [{name = "Jean-François Nguyen", email = "jf@jfng.fr"}]
+authors = [{name = "Mégane Nguyen", email = "meg@megng.fr"}]
 license = {file = "LICENSE.txt"}
 
 requires-python = "~=3.9"
